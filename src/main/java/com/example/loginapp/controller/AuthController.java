@@ -1,6 +1,7 @@
 package com.example.loginapp.controller;
 
 import com.example.loginapp.service.UserService;
+import com.example.loginapp.config.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
@@ -14,6 +15,9 @@ public class AuthController {
 
     @Autowired
     private UserService userService;
+
+    @Autowired
+    private JwtUtil jwtUtil;
 
     @GetMapping("/")
     public String login() {
@@ -43,6 +47,11 @@ public class AuthController {
     public String home(Authentication authentication, Model model) {
         String username = authentication.getName();
         model.addAttribute("username", username);
+
+        // Generate JWT token for the logged-in user
+        String jwtToken = jwtUtil.generateToken(username);
+        model.addAttribute("jwtToken", jwtToken);
+
         return "home";
     }
 }

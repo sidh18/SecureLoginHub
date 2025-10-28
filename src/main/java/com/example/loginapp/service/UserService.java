@@ -1,6 +1,6 @@
 package com.example.loginapp.service;
 
-import com.example.loginapp.model.user; // Note the uppercase 'U'
+import com.example.loginapp.model.user;
 import com.example.loginapp.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;

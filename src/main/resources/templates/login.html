@@ -56,6 +56,22 @@
         button:hover {
             background: #5568d3;
         }
+        .sso-button {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            background: #4285f4;
+            color: white;
+            text-align: center;
+            border-radius: 5px;
+            text-decoration: none;
+            font-weight: bold;
+            box-sizing: border-box;
+            margin-top: 10px;
+        }
+        .sso-button:hover {
+            background: #357ae8;
+        }
         .link {
             text-align: center;
             margin-top: 20px;
@@ -78,8 +94,24 @@
             background: #f8d7da;
             color: #721c24;
         }
-        .sso-button {
-            margin-top: 20px;
+        .divider {
+            text-align: center;
+            margin: 20px 0;
+            position: relative;
+        }
+        .divider hr {
+            border: none;
+            border-top: 1px solid #ddd;
+        }
+        .divider span {
+            position: absolute;
+            top: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 0 10px;
+            color: #999;
+            font-size: 14px;
         }
     </style>
 </head>
@@ -88,8 +120,8 @@
     <h2>Login</h2>
     <div th:if="${message}" class="message success" th:text="${message}"></div>
     <div th:if="${param.error}" class="message error">Invalid username or password!</div>
+
     <form th:action="@{/login}" method="post">
-        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
         <div class="form-group">
             <label for="username">Username</label>
             <input type="text" id="username" name="username" required>
@@ -100,11 +132,18 @@
         </div>
         <button type="submit">Login</button>
     </form>
+
+    <div class="divider">
+        <hr>
+        <span>OR</span>
+    </div>
+
+    <a href="/sso/login" class="sso-button">
+        🔐 Login with MiniOrange SSO
+    </a>
+
     <div class="link">
         Don't have an account? <a href="/signup">Sign Up</a>
-    </div>
-    <div class="sso-button">
-        <a href="/"><button>Login with miniOrange</button></a>
     </div>
 </div>
 </body>

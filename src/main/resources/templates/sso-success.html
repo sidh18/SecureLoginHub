@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>SSO Login Success</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            max-width: 700px;
+            width: 90%;
+        }
+        h2 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .success-icon {
+            text-align: center;
+            font-size: 60px;
+            color: #28a745;
+            margin-bottom: 20px;
+            animation: bounceIn 0.6s;
+        }
+        @keyframes bounceIn {
+            0% { transform: scale(0); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        .info-box {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .info-box label {
+            font-weight: bold;
+            color: #555;
+            display: block;
+            margin-bottom: 10px;
+        }
+        .info-box .value {
+            word-break: break-all;
+            color: #333;
+            background: white;
+            padding: 15px;
+            border-radius: 3px;
+            border: 1px solid #ddd;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        .username-display {
+            text-align: center;
+            font-size: 24px;
+            color: #667eea;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            text-decoration: none;
+            text-align: center;
+            display: inline-block;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        .btn-success:hover {
+            background: #218838;
+        }
+        .copy-btn {
+            background: #28a745;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+        .copy-btn:hover {
+            background: #218838;
+        }
+        .copied {
+            color: #28a745;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        .api-result {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            display: none;
+        }
+        .api-result.success {
+            border-left: 4px solid #28a745;
+        }
+        .api-result.error {
+            border-left: 4px solid #dc3545;
+        }
+        .api-result pre {
+            margin: 10px 0 0 0;
+            padding: 10px;
+            background: white;
+            border-radius: 3px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="success-icon">✓</div>
+    <h2>🎉 SSO Login Successful!</h2>
+
+    <div class="username-display">
+        Welcome, <span th:text="${username}">User</span>!
+    </div>
+
+    <div class="info-box">
+        <label>✅ Authentication Method: MiniOrange SSO</label>
+        <p style="margin: 5px 0; color: #666; font-size: 14px;">
+            You have been successfully authenticated via MiniOrange SSO.
+        </p>
+    </div>
+
+    <div class="info-box">
+        <label>🔑 Your Application JWT Token:</label>
+        <div class="value" id="jwtToken" th:text="${jwtToken}">Loading...</div>
+        <button class="copy-btn" onclick="copyToken()">📋 Copy Token</button>
+        <span id="copiedMsg" class="copied" style="display:none;">✓ Copied!</span>
+    </div>
+
+    <div class="info-box">
+        <label>📖 How to Use This Token:</label>
+        <p style="margin: 5px 0; color: #666; font-size: 14px;">
+            Include this token in the Authorization header for all API requests:
+        </p>
+        <div style="background: #2d2d2d; color: #f8f8f2; padding: 10px; border-radius: 3px; font-family: monospace; font-size: 12px; margin-top: 10px;">
+            Authorization: Bearer YOUR_JWT_TOKEN
+        </div>
+    </div>
+
+    <div class="info-box">
+        <label>🧪 Quick API Tests:</label>
+        <div class="button-group">
+            <button onclick="testPublicAPI()" class="btn btn-success">Test Public API</button>
+            <button onclick="testSecureAPI()" class="btn btn-success">Test Secure API</button>
+        </div>
+    </div>
+
+    <div id="apiResult" class="api-result"></div>
+
+    <div class="button-group" style="margin-top: 30px;">
+        <a href="/home" class="btn btn-primary">📊 Go to Dashboard</a>
+        <a href="/" class="btn btn-primary" style="background: #6c757d;">🏠 Back to Login</a>
+    </div>
+</div>
+
+<script th:inline="javascript">
+    // Get JWT token from Thymeleaf
+    const jwtToken = /*[[${jwtToken}]]*/ '';
+
+    // Store token in sessionStorage
+    if (jwtToken) {
+        sessionStorage.setItem('jwt_token', jwtToken);
+        console.log('✓ JWT token stored in sessionStorage');
+    }
+
+    function copyToken() {
+        const tokenText = document.getElementById('jwtToken').textContent;
+        navigator.clipboard.writeText(tokenText).then(() => {
+            const copiedMsg = document.getElementById('copiedMsg');
+            copiedMsg.style.display = 'inline';
+            setTimeout(() => {
+                copiedMsg.style.display = 'none';
+            }, 2000);
+        });
+    }
+
+    function showResult(success, data) {
+        const resultDiv = document.getElementById('apiResult');
+        resultDiv.className = 'api-result ' + (success ? 'success' : 'error');
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = `
+                <strong>${success ? '✓ Success' : '✗ Error'}</strong>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+            `;
+
+        // Auto-hide after 10 seconds
+        setTimeout(() => {
+            resultDiv.style.display = 'none';
+        }, 10000);
+    }
+
+    async function testPublicAPI() {
+        try {
+            const response = await fetch('/api/test');
+            const data = await response.json();
+            showResult(true, data);
+        } catch (error) {
+            showResult(false, { error: error.message });
+        }
+    }
+
+    async function testSecureAPI() {
+        try {
+            const token = sessionStorage.getItem('jwt_token');
+            if (!token) {
+                showResult(false, { error: 'No token found. Please login again.' });
+                return;
+            }
+
+            const response = await fetch('/api/secure', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            showResult(true, data);
+        } catch (error) {
+            showResult(false, { error: error.message });
+        }
+    }
+</script>
+</body>
+</html>

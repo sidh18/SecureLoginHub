@@ -1,0 +1,304 @@
+<!--<!DOCTYPE html>-->
+<!--<html xmlns:th="http://www.thymeleaf.org">-->
+<!--<head>-->
+<!--    <meta charset="UTF-8">-->
+<!--    <title>SSO Login with JWT</title>-->
+<!--    <style>-->
+<!--        body {-->
+<!--            font-family: Arial, sans-serif;-->
+<!--            display: flex;-->
+<!--            justify-content: center;-->
+<!--            align-items: center;-->
+<!--            min-height: 100vh;-->
+<!--            margin: 0;-->
+<!--            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);-->
+<!--        }-->
+<!--        .container {-->
+<!--            background: white;-->
+<!--            padding: 40px;-->
+<!--            border-radius: 10px;-->
+<!--            box-shadow: 0 10px 25px rgba(0,0,0,0.2);-->
+<!--            width: 450px;-->
+<!--        }-->
+<!--        h2 {-->
+<!--            text-align: center;-->
+<!--            color: #333;-->
+<!--            margin-bottom: 10px;-->
+<!--        }-->
+<!--        .subtitle {-->
+<!--            text-align: center;-->
+<!--            color: #666;-->
+<!--            margin-bottom: 30px;-->
+<!--            font-size: 14px;-->
+<!--        }-->
+<!--        .tabs {-->
+<!--            display: flex;-->
+<!--            margin-bottom: 20px;-->
+<!--            border-bottom: 2px solid #ddd;-->
+<!--        }-->
+<!--        .tab {-->
+<!--            flex: 1;-->
+<!--            padding: 10px;-->
+<!--            text-align: center;-->
+<!--            cursor: pointer;-->
+<!--            color: #666;-->
+<!--            font-weight: bold;-->
+<!--            transition: all 0.3s;-->
+<!--        }-->
+<!--        .tab.active {-->
+<!--            color: #667eea;-->
+<!--            border-bottom: 3px solid #667eea;-->
+<!--        }-->
+<!--        .tab-content {-->
+<!--            display: none;-->
+<!--        }-->
+<!--        .tab-content.active {-->
+<!--            display: block;-->
+<!--        }-->
+<!--        .form-group {-->
+<!--            margin-bottom: 20px;-->
+<!--        }-->
+<!--        label {-->
+<!--            display: block;-->
+<!--            margin-bottom: 5px;-->
+<!--            color: #555;-->
+<!--            font-weight: bold;-->
+<!--        }-->
+<!--        input[type="text"], input[type="password"], textarea {-->
+<!--            width: 100%;-->
+<!--            padding: 12px;-->
+<!--            border: 1px solid #ddd;-->
+<!--            border-radius: 5px;-->
+<!--            box-sizing: border-box;-->
+<!--            font-size: 14px;-->
+<!--        }-->
+<!--        textarea {-->
+<!--            min-height: 120px;-->
+<!--            font-family: monospace;-->
+<!--            resize: vertical;-->
+<!--        }-->
+<!--        button {-->
+<!--            width: 100%;-->
+<!--            padding: 12px;-->
+<!--            background: #667eea;-->
+<!--            color: white;-->
+<!--            border: none;-->
+<!--            border-radius: 5px;-->
+<!--            cursor: pointer;-->
+<!--            font-size: 16px;-->
+<!--            font-weight: bold;-->
+<!--        }-->
+<!--        button:hover {-->
+<!--            background: #5568d3;-->
+<!--        }-->
+<!--        button:disabled {-->
+<!--            background: #ccc;-->
+<!--            cursor: not-allowed;-->
+<!--        }-->
+<!--        .link {-->
+<!--            text-align: center;-->
+<!--            margin-top: 20px;-->
+<!--        }-->
+<!--        .link a {-->
+<!--            color: #667eea;-->
+<!--            text-decoration: none;-->
+<!--        }-->
+<!--        .message {-->
+<!--            padding: 10px;-->
+<!--            margin-bottom: 20px;-->
+<!--            border-radius: 5px;-->
+<!--            text-align: center;-->
+<!--        }-->
+<!--        .success {-->
+<!--            background: #d4edda;-->
+<!--            color: #155724;-->
+<!--        }-->
+<!--        .error {-->
+<!--            background: #f8d7da;-->
+<!--            color: #721c24;-->
+<!--        }-->
+<!--        .info {-->
+<!--            background: #d1ecf1;-->
+<!--            color: #0c5460;-->
+<!--            font-size: 12px;-->
+<!--            padding: 10px;-->
+<!--            margin-bottom: 15px;-->
+<!--            border-radius: 5px;-->
+<!--        }-->
+<!--        .loading {-->
+<!--            display: none;-->
+<!--            text-align: center;-->
+<!--            margin: 10px 0;-->
+<!--        }-->
+<!--        .spinner {-->
+<!--            border: 3px solid #f3f3f3;-->
+<!--            border-top: 3px solid #667eea;-->
+<!--            border-radius: 50%;-->
+<!--            width: 30px;-->
+<!--            height: 30px;-->
+<!--            animation: spin 1s linear infinite;-->
+<!--            margin: 0 auto;-->
+<!--        }-->
+<!--        @keyframes spin {-->
+<!--            0% { transform: rotate(0deg); }-->
+<!--            100% { transform: rotate(360deg); }-->
+<!--        }-->
+<!--    </style>-->
+<!--</head>-->
+<!--<body>-->
+<!--<div class="container">-->
+<!--    <h2>MiniOrange SSO Login</h2>-->
+<!--    <p class="subtitle">Authenticate using JWT Tokens</p>-->
+
+<!--    <div id="messageBox"></div>-->
+
+<!--    <div class="tabs">-->
+<!--        <div class="tab active" onclick="switchTab('credentials')">Username/Password</div>-->
+<!--        <div class="tab" onclick="switchTab('token')">JWT Token</div>-->
+<!--    </div>-->
+
+<!--    &lt;!&ndash; Tab 1: Login with Username/Password &ndash;&gt;-->
+<!--    <div id="credentials-tab" class="tab-content active">-->
+<!--        <div class="info">-->
+<!--            Enter your MiniOrange credentials. We'll authenticate with MiniOrange and generate a JWT token for you.-->
+<!--        </div>-->
+<!--        <form id="credentialsForm" onsubmit="authenticateWithCredentials(event)">-->
+<!--            <div class="form-group">-->
+<!--                <label for="username">Username</label>-->
+<!--                <input type="text" id="username" name="username" required>-->
+<!--            </div>-->
+<!--            <div class="form-group">-->
+<!--                <label for="password">Password</label>-->
+<!--                <input type="password" id="password" name="password" required>-->
+<!--            </div>-->
+<!--            <button type="submit" id="credentialsBtn">Authenticate with MiniOrange</button>-->
+<!--            <div class="loading" id="credentialsLoading">-->
+<!--                <div class="spinner"></div>-->
+<!--                <p>Authenticating...</p>-->
+<!--            </div>-->
+<!--        </form>-->
+<!--    </div>-->
+
+<!--    &lt;!&ndash; Tab 2: Submit JWT Token &ndash;&gt;-->
+<!--    <div id="token-tab" class="tab-content">-->
+<!--        <div class="info">-->
+<!--            Already have a JWT token from MiniOrange? Paste it here to authenticate with our application.-->
+<!--        </div>-->
+<!--        <form id="tokenForm" onsubmit="processToken(event)">-->
+<!--            <div class="form-group">-->
+<!--                <label for="jwtToken">MiniOrange JWT Token</label>-->
+<!--                <textarea id="jwtToken" name="token" placeholder="Paste your JWT token here..." required></textarea>-->
+<!--            </div>-->
+<!--            <button type="submit" id="tokenBtn">Process Token</button>-->
+<!--            <div class="loading" id="tokenLoading">-->
+<!--                <div class="spinner"></div>-->
+<!--                <p>Processing token...</p>-->
+<!--            </div>-->
+<!--        </form>-->
+<!--    </div>-->
+
+<!--    <div class="link">-->
+<!--        <a href="/">← Back to Regular Login</a>-->
+<!--    </div>-->
+<!--</div>-->
+
+<!--<script>-->
+<!--    function switchTab(tab) {-->
+<!--        // Update tab buttons-->
+<!--        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));-->
+<!--        event.target.classList.add('active');-->
+
+<!--        // Update tab content-->
+<!--        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));-->
+<!--        document.getElementById(tab + '-tab').classList.add('active');-->
+
+<!--        // Clear messages-->
+<!--        document.getElementById('messageBox').innerHTML = '';-->
+<!--    }-->
+
+<!--    function showMessage(message, type) {-->
+<!--        const messageBox = document.getElementById('messageBox');-->
+<!--        messageBox.innerHTML = `<div class="message ${type}">${message}</div>`;-->
+<!--    }-->
+
+<!--    async function authenticateWithCredentials(event) {-->
+<!--        event.preventDefault();-->
+
+<!--        const username = document.getElementById('username').value;-->
+<!--        const password = document.getElementById('password').value;-->
+<!--        const btn = document.getElementById('credentialsBtn');-->
+<!--        const loading = document.getElementById('credentialsLoading');-->
+
+<!--        btn.disabled = true;-->
+<!--        loading.style.display = 'block';-->
+<!--        showMessage('', '');-->
+
+<!--        try {-->
+<!--            const response = await fetch('/sso/authenticate', {-->
+<!--                method: 'POST',-->
+<!--                headers: {-->
+<!--                    'Content-Type': 'application/json'-->
+<!--                },-->
+<!--                body: JSON.stringify({ username, password })-->
+<!--            });-->
+
+<!--            const data = await response.json();-->
+
+<!--            if (response.ok && data.success) {-->
+<!--                showMessage('Authentication successful! Redirecting...', 'success');-->
+<!--                setTimeout(() => {-->
+<!--                    window.location.href = '/sso/success?token=' + encodeURIComponent(data.token);-->
+<!--                }, 1000);-->
+<!--            } else {-->
+<!--                showMessage(data.error || 'Authentication failed', 'error');-->
+<!--                btn.disabled = false;-->
+<!--                loading.style.display = 'none';-->
+<!--            }-->
+<!--        } catch (error) {-->
+<!--            showMessage('Error: ' + error.message, 'error');-->
+<!--            btn.disabled = false;-->
+<!--            loading.style.display = 'none';-->
+<!--        }-->
+<!--    }-->
+
+<!--    async function processToken(event) {-->
+<!--        event.preventDefault();-->
+
+<!--        const token = document.getElementById('jwtToken').value.trim();-->
+<!--        const btn = document.getElementById('tokenBtn');-->
+<!--        const loading = document.getElementById('tokenLoading');-->
+
+<!--        btn.disabled = true;-->
+<!--        loading.style.display = 'block';-->
+<!--        showMessage('', '');-->
+
+<!--        try {-->
+<!--            const response = await fetch('/sso/process-token', {-->
+<!--                method: 'POST',-->
+<!--                headers: {-->
+<!--                    'Content-Type': 'application/json'-->
+<!--                },-->
+<!--                body: JSON.stringify({ token })-->
+<!--            });-->
+
+<!--            const data = await response.json();-->
+
+<!--            if (response.ok && data.success) {-->
+<!--                showMessage('Token processed successfully! Redirecting...', 'success');-->
+<!--                setTimeout(() => {-->
+<!--                    window.location.href = '/sso/success?token=' + encodeURIComponent(data.token);-->
+<!--                }, 1000);-->
+<!--            } else {-->
+<!--                showMessage(data.error || 'Token processing failed', 'error');-->
+<!--                btn.disabled = false;-->
+<!--                loading.style.display = 'none';-->
+<!--            }-->
+<!--        } catch (error) {-->
+<!--            showMessage('Error: ' + error.message, 'error');-->
+<!--            btn.disabled = false;-->
+<!--            loading.style.display = 'none';-->
+<!--        }-->
+<!--    }-->
+<!--</script>-->
+<!--</body>-->
+<!--</html>-->
