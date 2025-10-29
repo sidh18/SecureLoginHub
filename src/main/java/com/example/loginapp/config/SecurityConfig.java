@@ -53,6 +53,8 @@ public class SecurityConfig {
                         .requestMatchers("/", "/signup", "/register").permitAll()
                         .requestMatchers("/sso/**").permitAll()
                         .requestMatchers("/api/test").permitAll()
+                        // Admin endpoints
+                        .requestMatchers("/admin/**").hasAnyAuthority("ADMIN", "ROLE_ADMIN")
                         // Secured endpoints
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().authenticated()
@@ -64,6 +66,13 @@ public class SecurityConfig {
                         .loginPage("/")
                         .loginProcessingUrl("/login")
                         .defaultSuccessUrl("/home", true)
+                        .successHandler((req, res, auth) -> {
+                            if (auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))) {
+                                res.sendRedirect("/admin/dashboard");
+                            } else {
+                                res.sendRedirect("/home");
+                            }
+                        })
                         .permitAll()
                 )
                 .logout(logout -> logout

@@ -97,7 +97,7 @@
 </head>
 <body>
 <div class="navbar">
-    <h1>My Application</h1>
+    <h1>DEMOGRAM</h1>
     <form th:action="@{/logout}" method="post" style="margin: 0;">
         <button type="submit" class="logout-btn">Logout</button>
     </form>
@@ -107,14 +107,14 @@
         <h2>Hello, <span class="username" th:text="${username}"></span>!</h2>
         <p style="color: #666; font-size: 18px;">Welcome to your dashboard</p>
 
-        <div class="jwt-section" th:if="${jwtToken}">
-            <h3>Your JWT Token:</h3>
-            <div class="jwt-token" id="jwtToken" th:text="${jwtToken}"></div>
-            <button class="copy-btn" onclick="copyToken()">📋 Copy Token</button>
-            <p style="font-size: 12px; color: #666; margin-top: 10px;">
-                Use this token to access API endpoints
-            </p>
-        </div>
+<!--        <div class="jwt-section" th:if="${jwtToken}">-->
+<!--            <h3>Your JWT Token:</h3>-->
+<!--            <div class="jwt-token" id="jwtToken" th:text="${jwtToken}"></div>-->
+<!--            <button class="copy-btn" onclick="copyToken()">📋 Copy Token</button>-->
+<!--            <p style="font-size: 12px; color: #666; margin-top: 10px;">-->
+<!--                Use this token to access API endpoints-->
+<!--            </p>-->
+<!--        </div>-->
     </div>
 </div>
 

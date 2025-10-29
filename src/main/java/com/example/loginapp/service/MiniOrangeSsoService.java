@@ -3,47 +3,16 @@ package com.example.loginapp.service;
 import com.example.loginapp.model.user;
 import com.example.loginapp.config.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-
-import java.util.UUID;
 
 @Service
 public class MiniOrangeSsoService {
-
-    @Value("${miniorange.sso.login-url}")
-    private String ssoLoginUrl;
-
-    @Value("${miniorange.sso.logout-url}")
-    private String ssoLogoutUrl;
-
-    @Value("${miniorange.sso.callback-url}")
-    private String callbackUrl;
 
     @Autowired
     private UserService userService;
 
     @Autowired
     private JwtUtil jwtUtil;
-
-    /**
-     * Get MiniOrange SSO login URL with callback parameter
-     */
-    public String getSsoLoginUrl() {
-        // Append callback URL if not already in the login URL
-        if (ssoLoginUrl.contains("?")) {
-            return ssoLoginUrl + "&RelayState=" + callbackUrl;
-        } else {
-            return ssoLoginUrl + "?RelayState=" + callbackUrl;
-        }
-    }
-
-    /**
-     * Get MiniOrange SSO logout URL
-     */
-    public String getSsoLogoutUrl() {
-        return ssoLogoutUrl;
-    }
 
     /**
      * Process user after SSO authentication and generate app JWT
@@ -65,7 +34,7 @@ public class MiniOrangeSsoService {
 
         // If user doesn't exist, create new user
         if (user == null) {
-            user = userService.registerUser(username, UUID.randomUUID().toString());
+            user = userService.registerUserFromSso(username, email, firstName, lastName);
             System.out.println("✅ Created new user from SSO: " + username);
         } else {
             System.out.println("✅ Existing user logged in via SSO: " + username);

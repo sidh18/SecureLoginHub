@@ -120,6 +120,7 @@
     <h2>Login</h2>
     <div th:if="${message}" class="message success" th:text="${message}"></div>
     <div th:if="${param.error}" class="message error">Invalid username or password!</div>
+    <div th:if="${param.error == 'sso_not_configured'}" class="message error">SSO is not configured properly!</div>
 
     <form th:action="@{/login}" method="post">
         <div class="form-group">
@@ -133,14 +134,20 @@
         <button type="submit">Login</button>
     </form>
 
-    <div class="divider">
-        <hr>
-        <span>OR</span>
-    </div>
+    <!-- Show SSO button only if SSO is enabled -->
+    <div th:if="${ssoEnabled}">
+        <div class="divider">
+            <hr>
+            <span>OR</span>
+        </div>
 
-    <a href="/sso/login" class="sso-button">
-        🔐 Login with MiniOrange SSO
-    </a>
+        <a href="/sso/login" class="sso-button">
+            <span th:if="${ssoType == 'JWT'}">🔑 Login with JWT SSO</span>
+            <span th:if="${ssoType == 'OAUTH'}">🔓 Login with OAuth SSO</span>
+            <span th:if="${ssoType == 'SAML'}">🛡️ Login with SAML SSO</span>
+            <span th:if="${ssoType == null}">🔐 Login with SSO</span>
+        </a>
+    </div>
 
     <div class="link">
         Don't have an account? <a href="/signup">Sign Up</a>

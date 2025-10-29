@@ -1,6 +1,7 @@
 package com.example.loginapp.controller;
 
 import com.example.loginapp.service.MiniOrangeSsoService;
+import com.example.loginapp.service.SsoConfigService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -23,12 +24,22 @@ public class SSOJwtController {
     @Autowired
     private MiniOrangeSsoService miniOrangeSsoService;
 
+    @Autowired
+    private SsoConfigService ssoConfigService;
+
     /**
      * Initiate SSO Login - Redirect to MiniOrange
      */
     @GetMapping("/login")
     public void initiateSSO(HttpServletResponse response) throws IOException {
-        String ssoUrl = miniOrangeSsoService.getSsoLoginUrl();
+        String ssoUrl = ssoConfigService.getJwtSsoUrl();
+
+        if (ssoUrl == null || ssoUrl.isEmpty()) {
+            System.err.println("❌ SSO is not configured properly");
+            response.sendRedirect("/?error=sso_not_configured");
+            return;
+        }
+
         System.out.println("\n🔐 ========== SSO LOGIN INITIATED ==========");
         System.out.println("🔗 Redirecting to MiniOrange SSO: " + ssoUrl);
         System.out.println("==========================================\n");
@@ -217,8 +228,12 @@ public class SSOJwtController {
         session.invalidate();
 
         // Redirect to MiniOrange logout
-        String logoutUrl = miniOrangeSsoService.getSsoLogoutUrl();
-        System.out.println("🔗 Redirecting to MiniOrange logout: " + logoutUrl);
-        response.sendRedirect(logoutUrl);
+        String logoutUrl = ssoConfigService.getJwtLogoutUrl();
+        if (logoutUrl != null && !logoutUrl.isEmpty()) {
+            System.out.println("🔗 Redirecting to MiniOrange logout: " + logoutUrl);
+            response.sendRedirect(logoutUrl);
+        } else {
+            response.sendRedirect("/");
+        }
     }
 }

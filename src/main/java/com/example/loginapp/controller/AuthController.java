@@ -1,6 +1,7 @@
 package com.example.loginapp.controller;
 
 import com.example.loginapp.service.UserService;
+import com.example.loginapp.service.SsoConfigService;
 import com.example.loginapp.config.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
@@ -19,8 +20,18 @@ public class AuthController {
     @Autowired
     private JwtUtil jwtUtil;
 
+    @Autowired
+    private SsoConfigService ssoConfigService;
+
     @GetMapping("/")
-    public String login() {
+    public String login(Model model) {
+        // Check if SSO is enabled
+        boolean ssoEnabled = ssoConfigService.isSsoEnabled();
+        String ssoType = ssoConfigService.getSsoType();
+
+        model.addAttribute("ssoEnabled", ssoEnabled);
+        model.addAttribute("ssoType", ssoType);
+
         return "login";
     }
 
@@ -51,6 +62,12 @@ public class AuthController {
         // Generate JWT token for the logged-in user
         String jwtToken = jwtUtil.generateToken(username);
         model.addAttribute("jwtToken", jwtToken);
+
+        // Check if user is admin
+        boolean isAdmin = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") ||
+                        a.getAuthority().equals("ADMIN"));
+        model.addAttribute("isAdmin", isAdmin);
 
         return "home";
     }
