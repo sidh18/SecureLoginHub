@@ -14,6 +14,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -24,10 +26,42 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Autowired
     private CustomUserDetailsService userDetailsService;
 
+    // --- FIX: ---
+    // Add all public prefixes to this list
+    private static final List<String> PUBLIC_PATHS_PREFIXES = Arrays.asList(
+            "/sso/",
+            "/saml/",
+            "/oauth/"
+    );
+
+    // Add all public exact paths
+    private static final List<String> PUBLIC_PATHS_EXACT = Arrays.asList(
+            "/",
+            "/signup",
+            "/register",
+            "/login",
+            "/api/test",
+            "/error"
+    );
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 
+        String path = request.getRequestURI();
+
+        // --- FIX: ---
+        // Check if the path is public
+        boolean isPublicPrefix = PUBLIC_PATHS_PREFIXES.stream().anyMatch(path::startsWith);
+        boolean isPublicExact = PUBLIC_PATHS_EXACT.contains(path);
+
+        // If it's a public path, skip the filter logic
+        if (isPublicPrefix || isPublicExact) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // --- Your existing logic ---
         String authorizationHeader = request.getHeader("Authorization");
         String token = null;
         String username = null;
@@ -57,3 +91,4 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 }
+

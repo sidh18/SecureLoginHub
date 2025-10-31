@@ -1,5 +1,6 @@
 package com.example.loginapp.controller;
 
+import com.example.loginapp.model.SsoConfig;
 import com.example.loginapp.service.UserService;
 import com.example.loginapp.service.SsoConfigService;
 import com.example.loginapp.config.JwtUtil;
@@ -10,6 +11,8 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+
+import java.util.List;
 
 @Controller
 public class AuthController {
@@ -25,12 +28,12 @@ public class AuthController {
 
     @GetMapping("/")
     public String login(Model model) {
-        // Check if SSO is enabled
-        boolean ssoEnabled = ssoConfigService.isSsoEnabled();
-        String ssoType = ssoConfigService.getSsoType();
+        // Get all enabled SSO configurations
+        List<SsoConfig> ssoConfigs = ssoConfigService.getEnabledSsoConfigs();
+        boolean ssoEnabled = !ssoConfigs.isEmpty();
 
         model.addAttribute("ssoEnabled", ssoEnabled);
-        model.addAttribute("ssoType", ssoType);
+        model.addAttribute("ssoConfigs", ssoConfigs);
 
         return "login";
     }

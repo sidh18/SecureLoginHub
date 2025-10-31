@@ -15,6 +15,12 @@
             background: #f5f7fa;
         }
 
+        /* --- FIX: --- */
+        /* This class will be added/removed by JavaScript */
+        body.modal-open {
+            overflow: hidden;
+        }
+
         .navbar {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             padding: 20px 40px;
@@ -295,6 +301,11 @@
             height: 100%;
             background-color: rgba(0,0,0,0.5);
             animation: fadeIn 0.3s;
+
+            /* --- FIX 1: --- */
+            /* Make the modal overlay scrollable and add padding */
+            overflow-y: auto;
+            padding: 5vh 0; /* Add vertical padding for spacing */
         }
 
         @keyframes fadeIn {
@@ -304,13 +315,21 @@
 
         .modal-content {
             background-color: white;
-            margin: 5% auto;
+            /* --- FIX 2: --- */
+            /* Remove fixed margin, use auto for horizontal centering */
+            margin: 0 auto;
             padding: 0;
             border-radius: 10px;
             width: 90%;
             max-width: 500px;
             box-shadow: 0 5px 30px rgba(0,0,0,0.3);
             animation: slideDown 0.3s;
+
+            /* --- FIX 3: --- */
+            /* Set a max-height and use flex-column layout */
+            max-height: 90vh; /* Ensure modal is never taller than 90% of viewport */
+            display: flex;
+            flex-direction: column;
         }
 
         @keyframes slideDown {
@@ -353,6 +372,9 @@
 
         .modal-body {
             padding: 25px;
+            /* --- FIX 4: --- */
+            /* Allow the modal body (the form) to scroll */
+            overflow-y: auto;
         }
 
         .form-group {
@@ -436,6 +458,10 @@
     </style>
 </head>
 <body>
+
+<!-- ... Your entire <body> HTML (navbar, container, etc.) goes here ... -->
+<!-- ... I am omitting it for brevity, but it's identical to your file ... -->
+
 <div class="navbar">
     <h1>🛡️ Admin Dashboard</h1>
     <div class="navbar-right">
@@ -472,49 +498,36 @@
     <div class="card">
         <div class="card-header">
             <h2>🔐 SSO Configuration</h2>
-        </div>
-
-        <div class="sso-config">
-            <div class="sso-status">
-                <div>
-                    <strong>SSO Status</strong>
-                    <p style="font-size: 12px; color: #666; margin-top: 5px;">
-                        Enable or disable SSO authentication
-                    </p>
-                </div>
-                <label class="toggle-switch">
-                    <input type="checkbox" id="ssoToggle" th:checked="${ssoConfig.ssoEnabled}">
-                    <span class="slider"></span>
-                </label>
-            </div>
-
-            <div class="sso-status">
-                <div>
-                    <strong>Current SSO Type</strong>
-                    <p style="font-size: 12px; color: #666; margin-top: 5px;">
-                        <span th:text="${ssoConfig.ssoType != null ? ssoConfig.ssoType : 'Not Configured'}"></span>
-                    </p>
-                </div>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-success" onclick="openCreateSsoModal('JWT')">+ Add JWT SSO</button>
+                <button class="btn btn-success" onclick="openCreateSsoModal('OAUTH')">+ Add OAuth SSO</button>
+                <button class="btn btn-success" onclick="openCreateSsoModal('SAML')">+ Add SAML SSO</button>
             </div>
         </div>
 
-        <div class="sso-types">
-            <div class="sso-type-btn" onclick="openJwtModal()"
-                 th:classappend="${ssoConfig.ssoType == 'JWT' ? 'active' : ''}">
-                <h3>🔑 JWT</h3>
-                <p>JSON Web Token based authentication</p>
-            </div>
-            <div class="sso-type-btn" onclick="openOAuthModal()"
-                 th:classappend="${ssoConfig.ssoType == 'OAUTH' ? 'active' : ''}">
-                <h3>🔓 OAuth</h3>
-                <p>OAuth 2.0 authentication</p>
-            </div>
-            <div class="sso-type-btn" onclick="openSamlModal()"
-                 th:classappend="${ssoConfig.ssoType == 'SAML' ? 'active' : ''}">
-                <h3>🛡️ SAML</h3>
-                <p>SAML 2.0 authentication</p>
-            </div>
-        </div>
+        <table id="ssoConfigsTable">
+            <thead>
+            <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Priority</th>
+                <th>Last Modified</th>
+                <th>Actions</th>
+            </tr>
+            </thead>
+            <tbody id="ssoConfigsTableBody">
+            <!-- Dynamic content -->
+            </tbody>
+        </table>
+
+        <!--
+            --- FIX: ---
+            Removed the confusing/broken "sso-config" and "sso-types" divs.
+            The table above ("ssoConfigsTable") already contains the
+            individual, working toggle switches for each SSO configuration.
+        -->
+
     </div>
 
     <!-- User Management -->
@@ -548,29 +561,34 @@
 <div id="jwtModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
-            <h3>🔑 JWT Configuration</h3>
+            <h3 id="jwtModalTitle">JWT Configuration</h3>
             <button class="close" onclick="closeModal('jwtModal')">&times;</button>
         </div>
         <div class="modal-body">
+            <input type="hidden" id="jwtConfigId">
+            <div class="form-group">
+                <label>Configuration Name *</label>
+                <input type="text" id="jwtName" placeholder="e.g., MiniOrange JWT">
+            </div>
             <div class="form-group">
                 <label>Client ID *</label>
-                <input type="text" id="jwtClientId" placeholder="Enter JWT Client ID"
-                       th:value="${ssoConfig.jwtClientId}">
+                <input type="text" id="jwtClientId" placeholder="Enter JWT Client ID">
             </div>
             <div class="form-group">
                 <label>SSO URL *</label>
-                <input type="text" id="jwtSsoUrl" placeholder="https://example.miniorange.com/sso"
-                       th:value="${ssoConfig.jwtSsoUrl}">
+                <input type="text" id="jwtSsoUrl" placeholder="https://example.miniorange.com/sso">
             </div>
             <div class="form-group">
                 <label>Callback URL *</label>
-                <input type="text" id="jwtCallbackUrl" placeholder="http://localhost:8080/sso/callback"
-                       th:value="${ssoConfig.jwtCallbackUrl}">
+                <input type="text" id="jwtCallbackUrl" placeholder="http://localhost:8080/sso/callback">
             </div>
             <div class="form-group">
                 <label>Logout URL</label>
-                <input type="text" id="jwtLogoutUrl" placeholder="https://example.miniorange.com/logout"
-                       th:value="${ssoConfig.jwtLogoutUrl}">
+                <input type="text" id="jwtLogoutUrl" placeholder="https://example.miniorange.com/logout">
+            </div>
+            <div class="form-group">
+                <label>Priority (0 = highest)</label>
+                <input type="number" id="jwtPriority" value="0" min="0">
             </div>
         </div>
         <div class="modal-footer">
@@ -584,34 +602,42 @@
 <div id="oauthModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
-            <h3>🔓 OAuth Configuration</h3>
+            <h3 id="oauthModalTitle">OAuth Configuration</h3>
             <button class="close" onclick="closeModal('oauthModal')">&times;</button>
         </div>
         <div class="modal-body">
+            <input type="hidden" id="oauthConfigId">
+            <div class="form-group">
+                <label>Configuration Name *</label>
+                <input type="text" id="oauthName" placeholder="e.g., MiniOrange OAuth">
+            </div>
             <div class="form-group">
                 <label>Client ID *</label>
-                <input type="text" id="oauthClientId" placeholder="Enter OAuth Client ID"
-                       th:value="${ssoConfig.oauthClientId}">
+                <input type="text" id="oauthClientId" placeholder="Enter OAuth Client ID">
             </div>
             <div class="form-group">
                 <label>Client Secret *</label>
-                <input type="password" id="oauthClientSecret" placeholder="Enter OAuth Client Secret"
-                       th:value="${ssoConfig.oauthClientSecret}">
+                <input type="password" id="oauthClientSecret" placeholder="Enter OAuth Client Secret">
             </div>
             <div class="form-group">
                 <label>Authorization URL *</label>
-                <input type="text" id="oauthAuthUrl" placeholder="https://example.com/oauth/authorize"
-                       th:value="${ssoConfig.oauthAuthorizationUrl}">
+                <input type="text" id="oauthAuthUrl" placeholder="https://example.com/oauth/authorize">
             </div>
             <div class="form-group">
                 <label>Token URL *</label>
-                <input type="text" id="oauthTokenUrl" placeholder="https://example.com/oauth/token"
-                       th:value="${ssoConfig.oauthTokenUrl}">
+                <input type="text" id="oauthTokenUrl" placeholder="https://example.com/oauth/token">
             </div>
             <div class="form-group">
                 <label>Callback URL *</label>
-                <input type="text" id="oauthCallbackUrl" placeholder="http://localhost:8080/oauth/callback"
-                       th:value="${ssoConfig.oauthCallbackUrl}">
+                <input type="text" id="oauthCallbackUrl" placeholder="http://localhost:8080/oauth/callback">
+            </div>
+            <div class="form-group">
+                <label>User Info URL</label>
+                <input type="text" id="oauthUserInfoUrl" placeholder="https://example.com/oauth/userinfo">
+            </div>
+            <div class="form-group">
+                <label>Priority (0 = highest)</label>
+                <input type="number" id="oauthPriority" value="0" min="0">
             </div>
         </div>
         <div class="modal-footer">
@@ -623,31 +649,69 @@
 
 <!-- SAML Configuration Modal -->
 <div id="samlModal" class="modal">
-    <div class="modal-content">
+    <div class="modal-content" style="max-width: 700px;">
         <div class="modal-header">
-            <h3>🛡️ SAML Configuration</h3>
-            <button class="close" onclick="closeModal('samlModal')">×</button>
+            <h3 id="samlModalTitle">SAML Configuration</h3>
+            <button class="close" onclick="closeModal('samlModal')">&times;</button>
         </div>
         <div class="modal-body">
+            <input type="hidden" id="samlConfigId">
+
+            <!-- IDP Metadata Import -->
+            <div id="idpMetadataSection" class="form-group" style="background: #f0f8ff; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                <label><strong>📥 Import IDP Metadata (Optional)</strong></label>
+                <p style="font-size: 12px; color: #666; margin: 5px 0;">
+                    Paste your MiniOrange IDP metadata XML below to auto-fill configuration fields
+                </p>
+                <textarea id="idpMetadata" placeholder="Paste IDP metadata XML here..." style="min-height: 100px;"></textarea>
+                <button type="button" class="btn btn-primary" onclick="parseIdpMetadata()" style="margin-top: 10px;">
+                    Parse and Auto-Fill
+                </button>
+            </div>
+
             <div class="form-group">
-                <label>Entity ID *</label>
-                <input type="text" id="samlEntityId" placeholder="Enter SAML Entity ID"
-                       th:value="${ssoConfig.samlEntityId}">
+                <label>Configuration Name *</label>
+                <input type="text" id="samlName" placeholder="e.g., MiniOrange SAML">
+            </div>
+
+            <div style="background: #fff3cd; padding: 10px; border-radius: 5px; margin-bottom: 15px;">
+                <strong>📤 SP Configuration (Share with MiniOrange)</strong>
+            </div>
+
+            <div class="form-group">
+                <label>SP Entity ID (Issuer) *</label>
+                <input type="text" id="samlEntityId" placeholder="http://localhost:8080">
+                <p style="font-size: 11px; color: #666; margin-top: 5px;">
+                    Share this with MiniOrange as "Issuer ID"
+                </p>
             </div>
             <div class="form-group">
-                <label>SSO URL *</label>
-                <input type="text" id="samlSsoUrl" placeholder="https://example.com/saml/sso"
-                       th:value="${ssoConfig.samlSsoUrl}">
+                <label>ACS URL (Assertion Consumer Service) *</label>
+                <input type="text" id="samlAcsUrl" placeholder="http://localhost:8080/saml/acs">
+                <p style="font-size: 11px; color: #666; margin-top: 5px;">
+                    Share this with MiniOrange as "ACS URL"
+                </p>
+            </div>
+
+            <div style="background: #d1ecf1; padding: 10px; border-radius: 5px; margin: 15px 0;">
+                <strong>📥 IDP Configuration (From MiniOrange)</strong>
+            </div>
+
+            <div class="form-group">
+                <label>IDP Entity ID *</label>
+                <input type="text" id="samlIdpEntityId" placeholder="https://login.xecurify.com">
             </div>
             <div class="form-group">
-                <label>X.509 Certificate *</label>
-                <textarea id="samlCertificate" placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
-                          th:text="${ssoConfig.samlX509Certificate}"></textarea>
+                <label>IDP SSO URL *</label>
+                <input type="text" id="samlSsoUrl" placeholder="https://login.xecurify.com/moas/idp/saml">
             </div>
             <div class="form-group">
-                <label>Callback URL *</label>
-                <input type="text" id="samlCallbackUrl" placeholder="http://localhost:8080/saml/callback"
-                       th:value="${ssoConfig.samlCallbackUrl}">
+                <label>IDP X.509 Certificate *</label>
+                <textarea id="samlCertificate" placeholder="-----BEGIN CERTIFICATE-----&#10;MIIDXTCCAkWgAwIBAgIJ...&#10;-----END CERTIFICATE-----"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Priority (0 = highest)</label>
+                <input type="number" id="samlPriority" value="0" min="0">
             </div>
         </div>
         <div class="modal-footer">
@@ -754,39 +818,27 @@
         }
     }
 
-    // SSO Toggle
-    document.getElementById('ssoToggle').addEventListener('change', async function() {
-        try {
-            const response = await fetch('/admin/api/sso-config/toggle', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    enabled: this.checked
-                })
-            });
-
-            if (response.ok) {
-                alert('SSO status updated successfully!');
-            } else {
-                alert('Failed to update SSO status');
-                this.checked = !this.checked;
-            }
-        } catch (error) {
-            console.error('Error toggling SSO:', error);
-            alert('Error updating SSO status');
-            this.checked = !this.checked;
-        }
-    });
+    /*
+        --- FIX: ---
+        Removed the broken "ssoToggle" event listener.
+        The correct toggle functionality is handled by the
+        "toggleSsoConfig(id, enabled)" function which is
+        called from the table.
+    */
 
     // Modal functions
     function openModal(modalId) {
         document.getElementById(modalId).style.display = 'block';
+        /* --- FIX 5: --- */
+        /* Add class to body to disable background scrolling */
+        document.body.classList.add('modal-open');
     }
 
     function closeModal(modalId) {
         document.getElementById(modalId).style.display = 'none';
+        /* --- FIX 6: --- */
+        /* Remove class from body to re-enable background scrolling */
+        document.body.classList.remove('modal-open');
     }
 
     function openJwtModal() {
@@ -1055,11 +1107,408 @@
             alert('Error deleting user');
         }
     }
+    // Load SSO configurations
+    async function loadSsoConfigs() {
+        try {
+            const response = await fetch('/admin/api/sso-configs');
+            const configs = await response.json();
+
+            const tbody = document.getElementById('ssoConfigsTableBody');
+            tbody.innerHTML = '';
+
+            if (configs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #999;">No SSO configurations found. Click "Add" button to create one.</td></tr>';
+                return;
+            }
+
+            configs.forEach(config => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                <td><strong>${config.name}</strong></td>
+                <td><span class="badge badge-primary">${config.ssoType}</span></td>
+
+                <!-- --- FIX: --- -->
+                <!-- Replaced toggle switch with a clickable tick/cross icon -->
+                <td style="text-align: center;">
+                    <span style="font-size: 24px; cursor: pointer; color: ${config.enabled ? '#28a745' : '#dc3545'};"
+                          onclick="toggleSsoConfig(${config.id}, ${!config.enabled})">
+                        ${config.enabled ? '&#10004;' : '&#10006;'}
+                    </span>
+                </td>
+
+                <td>${config.priority}</td>
+                <td>${config.lastModifiedAt ? new Date(config.lastModifiedAt).toLocaleString() : '-'}</td>
+                <td>
+                    <div class="action-buttons">
+                        <button class="btn btn-warning" onclick="editSsoConfig(${config.id})">Edit</button>
+                        ${config.ssoType === 'SAML' ? `<button class="btn btn-primary" onclick="viewSamlMetadata(${config.id})">Metadata</button>` : ''}
+                        <button class="btn btn-danger" onclick="deleteSsoConfig(${config.id}, '${config.name}')">Delete</button>
+                    </div>
+                </td>
+            `;
+                tbody.appendChild(tr);
+            });
+        } catch (error) {
+            console.error('Error loading SSO configs:', error);
+        }
+    }
+
+    // Toggle SSO configuration
+    async function toggleSsoConfig(id, enabled) {
+        try {
+            const response = await fetch(`/admin/api/sso-configs/${id}/toggle`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ enabled: enabled })
+            });
+
+            if (response.ok) {
+                alert(`SSO configuration ${enabled ? 'enabled' : 'disabled'} successfully!`);
+                loadSsoConfigs();
+            } else {
+                alert('Failed to toggle SSO configuration');
+            }
+        } catch (error) {
+            console.error('Error toggling SSO:', error);
+            alert('Error toggling SSO configuration');
+        }
+    }
+
+    // Open create SSO modal
+    function openCreateSsoModal(type) {
+        if (type === 'JWT') {
+            document.getElementById('jwtModalTitle').textContent = 'Add JWT SSO Configuration';
+            document.getElementById('jwtConfigId').value = '';
+            document.getElementById('jwtName').value = '';
+            document.getElementById('jwtClientId').value = '';
+            document.getElementById('jwtSsoUrl').value = '';
+            document.getElementById('jwtCallbackUrl').value = 'http://localhost:8080/sso/callback';
+            document.getElementById('jwtLogoutUrl').value = '';
+            document.getElementById('jwtPriority').value = '0';
+            openModal('jwtModal');
+        } else if (type === 'OAUTH') {
+            document.getElementById('oauthModalTitle').textContent = 'Add OAuth SSO Configuration';
+            document.getElementById('oauthConfigId').value = '';
+            document.getElementById('oauthName').value = '';
+            document.getElementById('oauthClientId').value = '';
+            document.getElementById('oauthClientSecret').value = '';
+            document.getElementById('oauthAuthUrl').value = '';
+            document.getElementById('oauthTokenUrl').value = '';
+            document.getElementById('oauthCallbackUrl').value = 'http://localhost:8080/oauth/callback';
+            document.getElementById('oauthUserInfoUrl').value = '';
+            document.getElementById('oauthPriority').value = '0';
+            openModal('oauthModal');
+        } else if (type === 'SAML') {
+            document.getElementById('samlModalTitle').textContent = 'Add SAML SSO Configuration';
+            document.getElementById('samlConfigId').value = '';
+            document.getElementById('samlName').value = '';
+            document.getElementById('samlEntityId').value = 'http://localhost:8080';
+            document.getElementById('samlIdpEntityId').value = '';
+            document.getElementById('samlSsoUrl').value = '';
+            document.getElementById('samlCertificate').value = '';
+            document.getElementById('samlAcsUrl').value = 'http://localhost:8080/saml/acs';
+            document.getElementById('samlPriority').value = '0';
+            document.getElementById('idpMetadataSection').style.display = 'block';
+            openModal('samlModal');
+        }
+    }
+
+    // Edit SSO configuration
+    async function editSsoConfig(id) {
+        try {
+            const response = await fetch(`/admin/api/sso-configs/${id}`);
+            const config = await response.json();
+
+            if (config.ssoType === 'JWT') {
+                document.getElementById('jwtModalTitle').textContent = 'Edit JWT SSO Configuration';
+                document.getElementById('jwtConfigId').value = config.id;
+                document.getElementById('jwtName').value = config.name;
+                document.getElementById('jwtClientId').value = config.jwtClientId || '';
+                document.getElementById('jwtSsoUrl').value = config.jwtSsoUrl || '';
+                document.getElementById('jwtCallbackUrl').value = config.jwtCallbackUrl || '';
+                document.getElementById('jwtLogoutUrl').value = config.jwtLogoutUrl || '';
+                document.getElementById('jwtPriority').value = config.priority || 0;
+                openModal('jwtModal');
+            } else if (config.ssoType === 'OAUTH') {
+                document.getElementById('oauthModalTitle').textContent = 'Edit OAuth SSO Configuration';
+                document.getElementById('oauthConfigId').value = config.id;
+                document.getElementById('oauthName').value = config.name;
+                document.getElementById('oauthClientId').value = config.oauthClientId || '';
+                document.getElementById('oauthClientSecret').value = config.oauthClientSecret || '';
+                document.getElementById('oauthAuthUrl').value = config.oauthAuthorizationUrl || '';
+                document.getElementById('oauthTokenUrl').value = config.oauthTokenUrl || '';
+                document.getElementById('oauthCallbackUrl').value = config.oauthCallbackUrl || '';
+                document.getElementById('oauthUserInfoUrl').value = config.oauthUserInfoUrl || '';
+                document.getElementById('oauthPriority').value = config.priority || 0;
+                openModal('oauthModal');
+            } else if (config.ssoType === 'SAML') {
+                document.getElementById('samlModalTitle').textContent = 'Edit SAML SSO Configuration';
+                document.getElementById('samlConfigId').value = config.id;
+                document.getElementById('samlName').value = config.name;
+                document.getElementById('samlEntityId').value = config.samlEntityId || '';
+                document.getElementById('samlIdpEntityId').value = config.samlIdpEntityId || '';
+                document.getElementById('samlSsoUrl').value = config.samlSsoUrl || '';
+                document.getElementById('samlCertificate').value = config.samlX509Certificate || '';
+                document.getElementById('samlAcsUrl').value = config.samlAcsUrl || '';
+                document.getElementById('samlPriority').value = config.priority || 0;
+                document.getElementById('idpMetadataSection').style.display = 'block';
+                openModal('samlModal');
+            }
+        } catch (error) {
+            console.error('Error loading SSO config:', error);
+            alert('Error loading SSO configuration');
+        }
+    }
+
+    // Delete SSO configuration
+    async function deleteSsoConfig(id, name) {
+        if (!confirm(`Are you sure you want to delete SSO configuration "${name}"?`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/admin/api/sso-configs/${id}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                alert('SSO configuration deleted successfully!');
+                loadSsoConfigs();
+            } else {
+                alert('Failed to delete SSO configuration');
+            }
+        } catch (error) {
+            console.error('Error deleting SSO config:', error);
+            alert('Error deleting SSO configuration');
+        }
+    }
+
+    // View SAML Metadata
+    async function viewSamlMetadata(id) {
+        try {
+            const response = await fetch(`/admin/api/sso-configs/${id}`);
+            const config = await response.json();
+
+            if (config.samlSpMetadata) {
+                const metadataWindow = window.open('', 'SAML Metadata', 'width=800,height=600');
+                metadataWindow.document.write('<html><head><title>SAML SP Metadata</title></head><body>');
+                metadataWindow.document.write('<h2>Service Provider (SP) Metadata</h2>');
+                metadataWindow.document.write('<p>Share this metadata with your Identity Provider (MiniOrange)</p>');
+                metadataWindow.document.write('<textarea style="width:100%;height:400px;font-family:monospace;">');
+                metadataWindow.document.write(config.samlSpMetadata);
+                metadataWindow.document.write('</textarea>');
+                metadataWindow.document.write('<br><button onclick="navigator.clipboard.writeText(document.querySelector(\'textarea\').value);alert(\'Copied!\')">Copy to Clipboard</button>');
+                metadataWindow.document.write('</body></html>');
+            } else {
+                alert('No metadata available');
+            }
+        } catch (error) {
+            console.error('Error loading metadata:', error);
+            alert('Error loading metadata');
+        }
+    }
+
+    // Parse IDP Metadata
+    async function parseIdpMetadata() {
+        const metadata = document.getElementById('idpMetadata').value;
+
+        if (!metadata) {
+            alert('Please paste IDP metadata XML');
+            return;
+        }
+
+        try {
+            const response = await fetch('/admin/api/sso-configs/saml/parse-metadata', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ metadata: metadata })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+
+                // Auto-fill form fields
+                if (data.entityId) {
+                    document.getElementById('samlIdpEntityId').value = data.entityId;
+                }
+                if (data.ssoUrl) {
+                    document.getElementById('samlSsoUrl').value = data.ssoUrl;
+                }
+                if (data.certificate) {
+                    document.getElementById('samlCertificate').value = data.certificate;
+                }
+
+                alert('IDP metadata parsed successfully! Fields have been auto-filled.');
+            } else {
+                alert('Failed to parse IDP metadata');
+            }
+        } catch (error) {
+            console.error('Error parsing metadata:', error);
+            alert('Error parsing IDP metadata');
+        }
+    }
+
+    // Update the existing saveJwtConfig function
+    async function saveJwtConfig() {
+        const id = document.getElementById('jwtConfigId').value;
+        const name = document.getElementById('jwtName').value;
+        const clientId = document.getElementById('jwtClientId').value;
+        const ssoUrl = document.getElementById('jwtSsoUrl').value;
+        const callbackUrl = document.getElementById('jwtCallbackUrl').value;
+        const logoutUrl = document.getElementById('jwtLogoutUrl').value;
+        const priority = parseInt(document.getElementById('jwtPriority').value);
+
+        if (!name || !clientId || !ssoUrl || !callbackUrl) {
+            alert('Please fill in all required fields');
+            return;
+        }
+
+        try {
+            const response = await fetch('/admin/api/sso-configs/jwt', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    id: id || null,
+                    name: name,
+                    clientId: clientId,
+                    ssoUrl: ssoUrl,
+                    callbackUrl: callbackUrl,
+                    logoutUrl: logoutUrl,
+                    priority: priority
+                })
+            });
+
+            if (response.ok) {
+                alert('JWT SSO configuration saved successfully!');
+                closeModal('jwtModal');
+                loadSsoConfigs();
+            } else {
+                alert('Failed to save JWT SSO configuration');
+            }
+        } catch (error) {
+            console.error('Error saving JWT config:', error);
+            alert('Error saving configuration');
+        }
+    }
+
+    // Update the existing saveOAuthConfig function
+    async function saveOAuthConfig() {
+        const id = document.getElementById('oauthConfigId').value;
+        const name = document.getElementById('oauthName').value;
+        const clientId = document.getElementById('oauthClientId').value;
+        const clientSecret = document.getElementById('oauthClientSecret').value;
+        const authUrl = document.getElementById('oauthAuthUrl').value;
+        const tokenUrl = document.getElementById('oauthTokenUrl').value;
+        const callbackUrl = document.getElementById('oauthCallbackUrl').value;
+        const userInfoUrl = document.getElementById('oauthUserInfoUrl').value;
+        const priority = parseInt(document.getElementById('oauthPriority').value);
+
+        if (!name || !clientId || !clientSecret || !authUrl || !tokenUrl || !callbackUrl) {
+            alert('Please fill in all required fields');
+            return;
+        }
+
+        try {
+            const response = await fetch('/admin/api/sso-configs/oauth', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    id: id || null,
+                    name: name,
+                    clientId: clientId,
+                    clientSecret: clientSecret,
+                    authorizationUrl: authUrl,
+                    tokenUrl: tokenUrl,
+                    callbackUrl: callbackUrl,
+                    userInfoUrl: userInfoUrl,
+                    priority: priority
+                })
+            });
+
+            if (response.ok) {
+                alert('OAuth SSO configuration saved successfully!');
+                closeModal('oauthModal');
+                loadSsoConfigs();
+            } else {
+                alert('Failed to save OAuth SSO configuration');
+            }
+        } catch (error) {
+            console.error('Error saving OAuth config:', error);
+            alert('Error saving configuration');
+        }
+    }
+
+    // Update the existing saveSamlConfig function
+    async function saveSamlConfig() {
+        const id = document.getElementById('samlConfigId').value;
+        const name = document.getElementById('samlName').value;
+        const entityId = document.getElementById('samlEntityId').value;
+        const idpEntityId = document.getElementById('samlIdpEntityId').value;
+        const ssoUrl = document.getElementById('samlSsoUrl').value;
+        const certificate = document.getElementById('samlCertificate').value;
+        const acsUrl = document.getElementById('samlAcsUrl').value;
+        const priority = parseInt(document.getElementById('samlPriority').value);
+
+        if (!name || !entityId || !idpEntityId || !ssoUrl || !certificate || !acsUrl) {
+            alert('Please fill in all required fields');
+            return;
+        }
+
+        try {
+            const response = await fetch('/admin/api/sso-configs/saml', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    id: id || null,
+                    name: name,
+                    entityId: entityId,
+                    idpEntityId: idpEntityId,
+                    ssoUrl: ssoUrl,
+                    certificate: certificate,
+                    acsUrl: acsUrl,
+                    priority: priority
+                })
+            });
+
+            if (response.ok) {
+                alert('SAML SSO configuration saved successfully!');
+                closeModal('samlModal');
+                loadSsoConfigs();
+            } else {
+                alert('Failed to save SAML SSO configuration');
+            }
+        } catch (error) {
+            console.error('Error saving SAML config:', error);
+            alert('Error saving configuration');
+        }
+    }
+
+    // Load configurations on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadUsers();
+        loadSsoConfigs();
+    });
 
     // Close modal when clicking outside
     window.onclick = function(event) {
         if (event.target.classList.contains('modal')) {
             event.target.style.display = 'none';
+            /* --- FIX 7: --- */
+            /* Re-enable background scrolling */
+            document.body.classList.remove('modal-open');
         }
     }
 </script>
+</body>
+</html>
+

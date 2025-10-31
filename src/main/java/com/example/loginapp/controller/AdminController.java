@@ -36,11 +36,19 @@ public class AdminController {
         }
 
         List<user> users = adminService.getAllUsers();
-        SsoConfig ssoConfig = ssoConfigService.getSsoConfig();
+        List<SsoConfig> ssoConfigs = ssoConfigService.getAllSsoConfigs();
+
+        // FIX: Provide a new, empty SsoConfig object instead of null
+        // This prevents the Thymeleaf template from crashing.
+        SsoConfig activeSsoConfig = ssoConfigService.getEnabledSsoConfigs()
+                .stream()
+                .findFirst()
+                .orElse(new SsoConfig()); // Changed from orElse(null)
 
         model.addAttribute("users", users);
-        model.addAttribute("ssoConfig", ssoConfig);
+        model.addAttribute("ssoConfigs", ssoConfigs);
         model.addAttribute("adminUsername", authentication.getName());
+        model.addAttribute("ssoConfig", activeSsoConfig);
 
         return "admin-dashboard";
     }
@@ -134,54 +142,85 @@ public class AdminController {
     }
 
     /**
-     * Get SSO configuration
+     * Get all SSO configurations
      */
-    @GetMapping("/api/sso-config")
+    @GetMapping("/api/sso-configs")
     @ResponseBody
-    public ResponseEntity<SsoConfig> getSsoConfig(Authentication authentication) {
+    public ResponseEntity<List<SsoConfig>> getAllSsoConfigs(Authentication authentication) {
         if (authentication == null || !hasRole(authentication, "ADMIN")) {
             return ResponseEntity.status(403).build();
         }
 
-        SsoConfig config = ssoConfigService.getSsoConfig();
+        List<SsoConfig> configs = ssoConfigService.getAllSsoConfigs();
+        return ResponseEntity.ok(configs);
+    }
+
+    /**
+     * Get specific SSO configuration
+     */
+    @GetMapping("/api/sso-configs/{id}")
+    @ResponseBody
+    public ResponseEntity<SsoConfig> getSsoConfig(@PathVariable Long id, Authentication authentication) {
+        if (authentication == null || !hasRole(authentication, "ADMIN")) {
+            return ResponseEntity.status(403).build();
+        }
+
+        SsoConfig config = ssoConfigService.getSsoConfigById(id);
+        if (config == null) {
+            return ResponseEntity.notFound().build();
+        }
         return ResponseEntity.ok(config);
     }
 
     /**
      * Toggle SSO
      */
-    @PostMapping("/api/sso-config/toggle")
+    @PostMapping("/api/sso-configs/{id}/toggle")
     @ResponseBody
-    public ResponseEntity<?> toggleSso(@RequestBody Map<String, Boolean> request,
+    public ResponseEntity<?> toggleSso(@PathVariable Long id,
+                                       @RequestBody Map<String, Boolean> request,
                                        Authentication authentication) {
         if (authentication == null || !hasRole(authentication, "ADMIN")) {
             return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
         }
 
         boolean enabled = request.get("enabled");
-        SsoConfig config = ssoConfigService.toggleSso(enabled, authentication.getName());
+        SsoConfig config = ssoConfigService.toggleSso(id, enabled, authentication.getName());
+        if (config == null) {
+            return ResponseEntity.notFound().build();
+        }
         return ResponseEntity.ok(config);
     }
 
     /**
      * Save JWT configuration
      */
-    @PostMapping("/api/sso-config/jwt")
+    @PostMapping("/api/sso-configs/jwt")
     @ResponseBody
-    public ResponseEntity<?> saveJwtConfig(@RequestBody Map<String, String> request,
+    public ResponseEntity<?> saveJwtConfig(@RequestBody Map<String, Object> request,
                                            Authentication authentication) {
         if (authentication == null || !hasRole(authentication, "ADMIN")) {
             return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
         }
 
         try {
-            String clientId = request.get("clientId");
-            String ssoUrl = request.get("ssoUrl");
-            String callbackUrl = request.get("callbackUrl");
-            String logoutUrl = request.get("logoutUrl");
+            Long id = request.get("id") != null ? Long.valueOf(request.get("id").toString()) : null;
+            String name = (String) request.get("name");
+            String clientId = (String) request.get("clientId");
+            String ssoUrl = (String) request.get("ssoUrl");
+            String callbackUrl = (String) request.get("callbackUrl");
+            String logoutUrl = (String) request.get("logoutUrl");
+            Integer priority = request.get("priority") != null ? (Integer) request.get("priority") : 0;
 
-            SsoConfig config = ssoConfigService.saveJwtConfig(clientId, ssoUrl, callbackUrl,
-                    logoutUrl, authentication.getName());
+            SsoConfig config;
+            if (id != null) {
+                config = ssoConfigService.updateJwtConfig(id, name, clientId, ssoUrl, callbackUrl,
+                        logoutUrl, priority, authentication.getName());
+            } else {
+                config = ssoConfigService.saveJwtConfig(name, clientId, ssoUrl, callbackUrl,
+                        logoutUrl, priority, authentication.getName());
+            }
+
             return ResponseEntity.ok(config);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -191,24 +230,36 @@ public class AdminController {
     /**
      * Save OAuth configuration
      */
-    @PostMapping("/api/sso-config/oauth")
+    @PostMapping("/api/sso-configs/oauth")
     @ResponseBody
-    public ResponseEntity<?> saveOAuthConfig(@RequestBody Map<String, String> request,
+    public ResponseEntity<?> saveOAuthConfig(@RequestBody Map<String, Object> request,
                                              Authentication authentication) {
         if (authentication == null || !hasRole(authentication, "ADMIN")) {
             return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
         }
 
         try {
-            String clientId = request.get("clientId");
-            String clientSecret = request.get("clientSecret");
-            String authUrl = request.get("authorizationUrl");
-            String tokenUrl = request.get("tokenUrl");
-            String callbackUrl = request.get("callbackUrl");
+            Long id = request.get("id") != null ? Long.valueOf(request.get("id").toString()) : null;
+            String name = (String) request.get("name");
+            String clientId = (String) request.get("clientId");
+            String clientSecret = (String) request.get("clientSecret");
+            String authUrl = (String) request.get("authorizationUrl");
+            String tokenUrl = (String) request.get("tokenUrl");
+            String callbackUrl = (String) request.get("callbackUrl");
+            String userInfoUrl = (String) request.get("userInfoUrl");
+            Integer priority = request.get("priority") != null ? (Integer) request.get("priority") : 0;
 
-            SsoConfig config = ssoConfigService.saveOAuthConfig(clientId, clientSecret, authUrl,
-                    tokenUrl, callbackUrl,
-                    authentication.getName());
+            SsoConfig config;
+            if (id != null) {
+                config = ssoConfigService.updateOAuthConfig(id, name, clientId, clientSecret,
+                        authUrl, tokenUrl, callbackUrl, userInfoUrl,
+                        priority, authentication.getName());
+            } else {
+                config = ssoConfigService.saveOAuthConfig(name, clientId, clientSecret, authUrl,
+                        tokenUrl, callbackUrl, userInfoUrl,
+                        priority, authentication.getName());
+            }
+
             return ResponseEntity.ok(config);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -218,25 +269,76 @@ public class AdminController {
     /**
      * Save SAML configuration
      */
-    @PostMapping("/api/sso-config/saml")
+    @PostMapping("/api/sso-configs/saml")
     @ResponseBody
-    public ResponseEntity<?> saveSamlConfig(@RequestBody Map<String, String> request,
+    public ResponseEntity<?> saveSamlConfig(@RequestBody Map<String, Object> request,
                                             Authentication authentication) {
         if (authentication == null || !hasRole(authentication, "ADMIN")) {
             return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
         }
 
         try {
-            String entityId = request.get("entityId");
-            String ssoUrl = request.get("ssoUrl");
-            String certificate = request.get("certificate");
-            String callbackUrl = request.get("callbackUrl");
+            Long id = request.get("id") != null ? Long.valueOf(request.get("id").toString()) : null;
+            String name = (String) request.get("name");
+            String entityId = (String) request.get("entityId");
+            String idpEntityId = (String) request.get("idpEntityId");
+            String ssoUrl = (String) request.get("ssoUrl");
+            String certificate = (String) request.get("certificate");
+            String acsUrl = (String) request.get("acsUrl");
+            Integer priority = request.get("priority") != null ? (Integer) request.get("priority") : 0;
 
-            SsoConfig config = ssoConfigService.saveSamlConfig(entityId, ssoUrl, certificate,
-                    callbackUrl, authentication.getName());
+            SsoConfig config;
+            if (id != null) {
+                config = ssoConfigService.updateSamlConfig(id, name, entityId, idpEntityId,
+                        ssoUrl, certificate, acsUrl,
+                        priority, authentication.getName());
+            } else {
+                config = ssoConfigService.saveSamlConfig(name, entityId, idpEntityId, ssoUrl,
+                        certificate, acsUrl,
+                        priority, authentication.getName());
+            }
+
             return ResponseEntity.ok(config);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Parse IDP metadata
+     */
+    @PostMapping("/api/sso-configs/saml/parse-metadata")
+    @ResponseBody
+    public ResponseEntity<?> parseIdpMetadata(@RequestBody Map<String, String> request,
+                                              Authentication authentication) {
+        if (authentication == null || !hasRole(authentication, "ADMIN")) {
+            return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
+        }
+
+        try {
+            String metadataXml = request.get("metadata");
+            Map<String, String> parsedData = ssoConfigService.parseIdpMetadata(metadataXml);
+            return ResponseEntity.ok(parsedData);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Failed to parse metadata: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Delete SSO configuration
+     */
+    @DeleteMapping("/api/sso-configs/{id}")
+    @ResponseBody
+    public ResponseEntity<?> deleteSsoConfig(@PathVariable Long id, Authentication authentication) {
+        if (authentication == null || !hasRole(authentication, "ADMIN")) {
+            return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
+        }
+
+        boolean deleted = ssoConfigService.deleteSsoConfig(id);
+        if (deleted) {
+            return ResponseEntity.ok(Map.of("message", "SSO configuration deleted successfully"));
+        } else {
+            return ResponseEntity.notFound().build();
         }
     }
 

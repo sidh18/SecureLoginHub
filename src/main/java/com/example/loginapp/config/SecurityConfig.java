@@ -52,6 +52,8 @@ public class SecurityConfig {
                         // Public endpoints
                         .requestMatchers("/", "/signup", "/register").permitAll()
                         .requestMatchers("/sso/**").permitAll()
+                        .requestMatchers("/saml/**").permitAll() // Your SAML fix
+                        .requestMatchers("/oauth/**").permitAll() // FIX: Add OAuth paths
                         .requestMatchers("/api/test").permitAll()
                         // Admin endpoints
                         .requestMatchers("/admin/**").hasAnyAuthority("ADMIN", "ROLE_ADMIN")
@@ -86,3 +88,4 @@ public class SecurityConfig {
         return http.build();
     }
 }
+
