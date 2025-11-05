@@ -4,6 +4,7 @@ import com.example.loginapp.service.CustomUserDetailsService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -26,6 +27,9 @@ public class SecurityConfig {
     @Autowired
     private JwtAuthenticationFilter jwtAuthenticationFilter;
 
+    @Autowired
+    private TenantIdentifierFilter tenantIdentifierFilter;
+
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
@@ -45,6 +49,7 @@ public class SecurityConfig {
     }
 
     @Bean
+    @Order(1) // Give this filter chain a lower priority than the API one
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
@@ -52,24 +57,52 @@ public class SecurityConfig {
                         // Public endpoints
                         .requestMatchers("/", "/signup", "/register").permitAll()
                         .requestMatchers("/sso/**").permitAll()
-                        .requestMatchers("/saml/**").permitAll() // Your SAML fix
-                        .requestMatchers("/oauth/**").permitAll() // FIX: Add OAuth paths
+                        .requestMatchers("/saml/**").permitAll()
+                        .requestMatchers("/oauth/**").permitAll()
+
+                        // Public APIs for dynamic login page
                         .requestMatchers("/api/test").permitAll()
-                        // Admin endpoints
-                        .requestMatchers("/admin/**").hasAnyAuthority("ADMIN", "ROLE_ADMIN")
-                        // Secured endpoints
-                        .requestMatchers("/api/**").authenticated()
+                        .requestMatchers("/api/tenant/info").permitAll()
+                        .requestMatchers("/api/sso-configs/tenant").permitAll()
+
+                        // --- FIX: ---
+                        // Allow public access to the new tenant-aware API login/register endpoints
+                        .requestMatchers("/api/auth/login").permitAll()
+                        .requestMatchers("/api/auth/register").permitAll()
+                        // --- END FIX ---
+
+                        // --- NEW ROLE-BASED RULES ---
+                        // Tenant Admin paths
+                        .requestMatchers("/admin/dashboard").hasRole("ADMIN")
+                        .requestMatchers("/admin/api/**").hasRole("ADMIN")
+
+                        // Superadmin paths
+                        .requestMatchers("/superadmin/dashboard").hasRole("SUPER_ADMIN")
+                        .requestMatchers("/superadmin/api/**").hasRole("SUPER_ADMIN")
+
+                        // Secured user endpoints
+                        .requestMatchers("/home").hasAnyRole("USER", "ADMIN", "SUPER_ADMIN")
+                        .requestMatchers("/api/**").authenticated() // General API fallback
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session
+                        // We use IF_REQUIRED to allow sessions for form login
                         .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
                 )
                 .formLogin(form -> form
                         .loginPage("/")
-                        .loginProcessingUrl("/login")
+                        .loginProcessingUrl("/login") // This is for the "superadmin" form
                         .defaultSuccessUrl("/home", true)
                         .successHandler((req, res, auth) -> {
-                            if (auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))) {
+                            // --- UPDATED FOR MULTI-TENANCY ---
+                            boolean isSuperAdmin = auth.getAuthorities().stream()
+                                    .anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN"));
+                            boolean isAdmin = auth.getAuthorities().stream()
+                                    .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+
+                            if (isSuperAdmin) {
+                                res.sendRedirect("/superadmin/dashboard");
+                            } else if (isAdmin) {
                                 res.sendRedirect("/admin/dashboard");
                             } else {
                                 res.sendRedirect("/home");
@@ -83,7 +116,12 @@ public class SecurityConfig {
                         .permitAll()
                 )
                 .authenticationProvider(authenticationProvider())
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
+                // --- FIX: Add JWT filter first, then add Tenant filter before it ---
+                // This adds the JWT filter to the chain, relative to Spring's known filter
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                // This NOW works, as JwtAuthenticationFilter.class is a known anchor
+                .addFilterBefore(tenantIdentifierFilter, JwtAuthenticationFilter.class);
 
         return http.build();
     }

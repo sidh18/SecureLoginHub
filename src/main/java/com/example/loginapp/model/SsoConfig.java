@@ -1,6 +1,10 @@
 package com.example.loginapp.model;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
+
+import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "sso_config")
@@ -15,9 +19,10 @@ public class SsoConfig {
     @Column(nullable = false)
     private String ssoType; // JWT, OAUTH, SAML
 
-    // ADD THIS FIELD (MUST MATCH DB COLUMN)
+    // --- FIX 1: RESTORE THIS FIELD ---
+    // This field must match your database column "sso_enabled"
     @Column(name = "sso_enabled", nullable = false)
-    private boolean ssoEnabled = true;
+    private boolean ssoEnabled = false; // Default to false
 
     @Column(nullable = false)
     private Boolean enabled = false;
@@ -82,8 +87,25 @@ public class SsoConfig {
     @Column
     private String lastModifiedBy;
 
+    // --- FIX 1: Change type from LocalDateTime to Instant ---
     @Column
-    private java.time.LocalDateTime lastModifiedAt;
+    private Instant lastModifiedAt;
+
+    // --- MULTI-TENANCY ---
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "organization_id", nullable = true)
+    // --- FIX 2: Add JsonBackReference to prevent JSON infinite loops ---
+    @JsonBackReference
+    private Organization organization;
+
+    // --- Lifecycle Callbacks ---
+
+    @PreUpdate
+    @PrePersist
+    protected void onUpdate() {
+        // --- FIX 3: Use Instant.now() ---
+        lastModifiedAt = Instant.now();
+    }
 
 
 
@@ -91,21 +113,25 @@ public class SsoConfig {
 
     // Getters and Setters
 
+    // --- FIX 2: RESTORE THE GETTER ---
     public boolean isSsoEnabled() {
         return ssoEnabled;
     }
 
+    // --- FIX 3: RESTORE THE SETTER ---
     public void setSsoEnabled(boolean ssoEnabled) {
         this.ssoEnabled = ssoEnabled;
+        this.enabled = ssoEnabled; // Keep them in sync
     }
 
     public boolean isEnabled() {
         return enabled;
     }
 
+    // --- FIX 4: UPDATE THIS SETTER TO SYNC BOTH FIELDS ---
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
-        this.ssoEnabled = enabled; // sync both
+        this.ssoEnabled = enabled; // Keep them in sync
     }
 
     public Long getId() { return id; }
@@ -118,7 +144,11 @@ public class SsoConfig {
     public void setSsoType(String ssoType) { this.ssoType = ssoType; }
 
     public Boolean getEnabled() { return enabled; }
-    public void setEnabled(Boolean enabled) { this.enabled = enabled; }
+    // --- FIX 5: UPDATE THIS SETTER TO SYNC BOTH FIELDS ---
+    public void setEnabled(Boolean enabled) {
+        this.enabled = enabled != null ? enabled : false;
+        this.ssoEnabled = this.enabled; // Keep them in sync
+    }
 
     public Integer getPriority() { return priority; }
     public void setPriority(Integer priority) { this.priority = priority; }
@@ -177,6 +207,30 @@ public class SsoConfig {
     public String getLastModifiedBy() { return lastModifiedBy; }
     public void setLastModifiedBy(String lastModifiedBy) { this.lastModifiedBy = lastModifiedBy; }
 
-    public java.time.LocalDateTime getLastModifiedAt() { return lastModifiedAt; }
-    public void setLastModifiedAt(java.time.LocalDateTime lastModifiedAt) { this.lastModifiedAt = lastModifiedAt; }
+    // --- FIX 4: Update Getter and Setter to use Instant ---
+    public Instant getLastModifiedAt() { return lastModifiedAt; }
+    public void setLastModifiedAt(Instant lastModifiedAt) { this.lastModifiedAt = lastModifiedAt; }
+
+    public Organization getOrganization() {
+        return organization;
+    }
+
+    public void setOrganization(Organization organization) {
+        this.organization = organization;
+    }
+
+    // --- FIX 5: Add helper for JSON serialization, just like in user.java ---
+    /**
+     * This adds an "organizationName" field to the JSON output,
+     * which the superadmin-dashboard.html is expecting.
+     * @return The name of the organization, or null.
+     */
+    @Transient // Don't persist this to the DB
+    public String getOrganizationName() {
+        if (organization != null) {
+            return organization.getName();
+        }
+        return null;
+    }
 }
+

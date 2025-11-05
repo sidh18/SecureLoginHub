@@ -1,6 +1,8 @@
 package com.example.loginapp.model;
 
+import com.fasterxml.jackson.annotation.JsonBackReference; // <-- IMPORT THIS
 import jakarta.persistence.*;
+import java.time.Instant;
 
 @Entity
 @Table(name = "users")
@@ -15,7 +17,7 @@ public class user {
     @Column(nullable = false)
     private String password;
 
-    @Column
+    @Column(unique = true) // Email should also be unique
     private String email;
 
     @Column
@@ -25,59 +27,165 @@ public class user {
     private String lastName;
 
     @Column(nullable = false)
-    private String role = "USER"; // USER or ADMIN
+    private String role; // "ROLE_USER", "ROLE_ADMIN", "ROLE_SUPER_ADMIN"
 
+    // --- THIS IS THE FIX ---
+    // Changed from 'boolean' to 'Boolean'.
+    // 'Boolean' is a wrapper class that can be null.
+    // 'boolean' is a primitive that cannot be null.
+    // We also set a default value for new entities.
     @Column
     private Boolean active = true;
 
-    @Column
-    private java.time.LocalDateTime createdAt;
+    @Column(name = "created_at", updatable = false)
+    private Instant createdAt;
 
     @Column
-    private String createdVia; // REGULAR or SSO
+    private String createdVia; // "REGULAR" or "SSO"
+
+    // --- MULTI-TENANCY ---
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "organization_id", nullable = true)
+    @JsonBackReference // <-- ADD THIS ANNOTATION
+    private Organization organization;
+
+    // --- Lifecycle Callbacks ---
+
+    @PrePersist
+    protected void onCreate() {
+        this.createdAt = Instant.now();
+        if (this.createdVia == null) {
+            this.createdVia = "REGULAR";
+        }
+        if (this.role == null) {
+            this.role = "ROLE_USER";
+        }
+        // Ensure active is set on creation if it's somehow null
+        if (this.active == null) {
+            this.active = true;
+        }
+    }
+
+    // --- Constructors ---
 
     public user() {
-        this.createdAt = java.time.LocalDateTime.now();
-        this.createdVia = "REGULAR";
+        // Default constructor
     }
 
     public user(String username, String password) {
         this.username = username;
         this.password = password;
-        this.role = "USER";
-        this.active = true;
-        this.createdAt = java.time.LocalDateTime.now();
-        this.createdVia = "REGULAR";
     }
 
-    // Getters and Setters
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
 
-    public String getUsername() { return username; }
-    public void setUsername(String username) { this.username = username; }
+    // --- All Getters and Setters ---
 
-    public String getPassword() { return password; }
-    public void setPassword(String password) { this.password = password; }
+    public Long getId() {
+        return id;
+    }
 
-//    public String getEmail() { return email; }
-//    public void setEmail(String email) { this.email = email; }
-//
-//    public String getFirstName() { return firstName; }
-//    public void setFirstName(String firstName) { this.firstName = firstName; }
-//
-//    public String getLastName() { return lastName; }
-//    public void setLastName(String lastName) { this.lastName = lastName; }
+    public void setId(Long id) {
+        this.id = id;
+    }
 
-    public String getRole() { return role; }
-    public void setRole(String role) { this.role = role; }
+    public String getUsername() {
+        return username;
+    }
 
-    public Boolean getActive() { return active; }
-    public void setActive(Boolean active) { this.active = active; }
+    public void setUsername(String username) {
+        this.username = username;
+    }
 
-    public java.time.LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(java.time.LocalDateTime createdAt) { this.createdAt = createdAt; }
+    public String getPassword() {
+        return password;
+    }
 
-    public String getCreatedVia() { return createdVia; }
-    public void setCreatedVia(String createdVia) { this.createdVia = createdVia; }
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public String getFirstName() {
+        return firstName;
+    }
+
+    public void setFirstName(String firstName) {
+        this.firstName = firstName;
+    }
+
+    public String getLastName() {
+        return lastName;
+    }
+
+    public void setLastName(String lastName) {
+        this.lastName = lastName;
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
+    }
+
+    // --- UPDATED GETTER/SETTER ---
+    // Now returns and accepts the Boolean wrapper class.
+    public Boolean getActive() {
+        return active;
+    }
+
+    public void setActive(Boolean active) {
+        this.active = active;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public String getCreatedVia() {
+        return createdVia;
+    }
+
+    public void setCreatedVia(String createdVia) {
+        this.createdVia = createdVia;
+    }
+
+    public Organization getOrganization() {
+        return organization;
+    }
+
+    public void setOrganization(Organization organization) {
+        this.organization = organization;
+    }
+
+    // --- HELPER GETTERS ---
+
+    /**
+     * --- NEW METHOD ---
+     * This adds an "organizationName" field to the JSON output,
+     * which the superadmin-dashboard.html is expecting.
+     *
+     * @return The name of the organization, or null.
+     */
+    @Transient // Don't persist this to the DB
+    public String getOrganizationName() {
+        if (organization != null) {
+            return organization.getName();
+        }
+        return null;
+    }
 }
+
+

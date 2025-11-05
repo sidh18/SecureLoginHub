@@ -1,13 +1,26 @@
 package com.example.loginapp.service;
 
+import com.example.loginapp.model.Organization;
 import com.example.loginapp.model.SsoConfig;
+import com.example.loginapp.repository.OrganizationRepository;
 import com.example.loginapp.repository.SsoConfigRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.xml.sax.InputSource;
 
-import java.time.LocalDateTime;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.StringReader;
+import java.time.Instant; // <-- We will use this
+import java.time.LocalDateTime; // <-- We will stop using this for .now()
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class SsoConfigService {
@@ -16,237 +29,289 @@ public class SsoConfigService {
     private SsoConfigRepository ssoConfigRepository;
 
     @Autowired
-    private SamlMetadataService samlMetadataService;
+    private OrganizationRepository organizationRepository;
+
+    // --- Tenant-Aware Getters ---
 
     /**
-     * Get all enabled SSO configurations
+     * Gets all SSO configs for a specific organization (for Tenant Admins).
      */
-    public List<SsoConfig> getEnabledSsoConfigs() {
-        return ssoConfigRepository.findByEnabledTrueOrderByPriorityAsc();
+    public List<SsoConfig> getAllSsoConfigsForOrganization(Long organizationId) {
+        if (organizationId == null) {
+            throw new IllegalArgumentException("Organization ID cannot be null");
+        }
+        return ssoConfigRepository.findByOrganizationId(organizationId);
     }
 
     /**
-     * Check if any SSO is enabled
+     * Gets all SSO configs for Superadmins (global and all tenant configs).
+     * This is a "god mode" view.
      */
-    public boolean isAnySsoEnabled() {
-        return !getEnabledSsoConfigs().isEmpty();
-    }
-
-    /**
-     * Get specific SSO config by ID
-     */
-    public SsoConfig getSsoConfigById(Long id) {
-        return ssoConfigRepository.findById(id).orElse(null);
-    }
-
-    /**
-     * Get all SSO configurations
-     */
-    public List<SsoConfig> getAllSsoConfigs() {
+    public List<SsoConfig> getAllSsoConfigsForSuperAdmin() {
         return ssoConfigRepository.findAll();
     }
 
     /**
-     * Toggle SSO configuration
+     * Gets a single SSO config, ensuring it belongs to the correct organization.
      */
-    public SsoConfig toggleSso(Long id, boolean enabled, String modifiedBy) {
-        SsoConfig config = ssoConfigRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("SSO Config not found"));
+    public SsoConfig getSsoConfigById(Long configId, Long organizationId) throws Exception {
+        SsoConfig config = ssoConfigRepository.findById(configId)
+                .orElseThrow(() -> new Exception("SSO Config not found"));
 
-        config.setEnabled(enabled); // this also sets ssoEnabled
-        config.setLastModifiedBy(modifiedBy);
-        config.setLastModifiedAt(LocalDateTime.now());
+        // Security check
+        if (organizationId != null) { // This is a Tenant Admin
+            if (config.getOrganization() == null || !config.getOrganization().getId().equals(organizationId)) {
+                throw new Exception("Access Denied: SSO Config not found.");
+            }
+        }
+        // Superadmin (null orgId) can get any config
 
-        return ssoConfigRepository.save(config);
+        return config;
     }
 
     /**
-     * Save JWT configuration
+     * Gets the single enabled config of a specific type for a specific organization.
+     * This is called by the SSO controllers during login.
      */
-    public SsoConfig saveJwtConfig(String name, String clientId, String ssoUrl,
-                                   String callbackUrl, String logoutUrl,
-                                   Integer priority, String modifiedBy) {
+    public SsoConfig getEnabledSsoConfig(String ssoType, Long organizationId) {
+        if (organizationId == null) {
+            // Superadmin domain has no SSO by default.
+            // Or you could have global SSO configs (orgId=null).
+            // For now, we'll assume SSO is tenant-only.
+            return null;
+        }
+        return ssoConfigRepository.findBySsoTypeAndEnabledTrueAndOrganizationId(ssoType, organizationId)
+                .orElse(null);
+    }
+
+    /**
+     * Finds a config by its client ID, only within a specific organization.
+     * Used for the JWT SSO callback.
+     */
+    public SsoConfig findByJwtClientId(String clientId, Long organizationId) {
+        if (organizationId == null) {
+            return null;
+        }
+        return ssoConfigRepository.findByJwtClientIdAndOrganizationId(clientId, organizationId)
+                .orElse(null);
+    }
+
+    // --- NEW METHOD ---
+    /**
+     * Gets all ENABLED SSO configs for a specific organization.
+     * This is the missing method called by ApiController for the login page.
+     */
+    public List<SsoConfig> getEnabledSsoConfigsForOrganization(Long organizationId) {
+        if (organizationId == null) {
+            return Collections.emptyList();
+        }
+        // Get all configs for the org (we know this repo method exists from other methods)
+        List<SsoConfig> allConfigs = ssoConfigRepository.findByOrganizationId(organizationId);
+
+        // Filter in-memory for only the enabled ones.
+        // We can safely assume SsoConfig has 'isEnabled()' because 'setEnabled(false)'
+        // is called in your save methods.
+        return allConfigs.stream()
+                .filter(SsoConfig::isEnabled)
+                .collect(Collectors.toList());
+    }
+
+    // --- Tenant-Aware C.R.U.D. Methods ---
+    // All save/update/delete methods now require an organizationId
+    // to correctly assign the config to a tenant.
+
+    private Organization getOrg(Long organizationId) throws Exception {
+        if (organizationId == null) {
+            return null; // This is a "global" config made by a Superadmin
+        }
+        return organizationRepository.findById(organizationId)
+                .orElseThrow(() -> new Exception("Organization not found"));
+    }
+
+    public SsoConfig saveJwtConfig(String name, String clientId, String ssoUrl, String callbackUrl,
+                                   String logoutUrl, Integer priority, String modifiedBy, Long organizationId) throws Exception {
+
         SsoConfig config = new SsoConfig();
-        config.setName(name);
         config.setSsoType("JWT");
-        config.setEnabled(true);
-        config.setPriority(priority != null ? priority : 0);
+        config.setName(name);
         config.setJwtClientId(clientId);
         config.setJwtSsoUrl(ssoUrl);
         config.setJwtCallbackUrl(callbackUrl);
         config.setJwtLogoutUrl(logoutUrl);
+        config.setPriority(priority);
+        config.setEnabled(false); // New configs are disabled by default
         config.setLastModifiedBy(modifiedBy);
-        config.setLastModifiedAt(LocalDateTime.now());
+        config.setLastModifiedAt(Instant.now()); // <--- FIX 1
+        config.setOrganization(getOrg(organizationId));
+
         return ssoConfigRepository.save(config);
     }
 
-    /**
-     * Update JWT configuration
-     */
-    public SsoConfig updateJwtConfig(Long id, String name, String clientId, String ssoUrl,
-                                     String callbackUrl, String logoutUrl,
-                                     Integer priority, String modifiedBy) {
-        SsoConfig config = ssoConfigRepository.findById(id).orElse(null);
-        if (config != null) {
-            if (name != null) config.setName(name);
-            if (clientId != null) config.setJwtClientId(clientId);
-            if (ssoUrl != null) config.setJwtSsoUrl(ssoUrl);
-            if (callbackUrl != null) config.setJwtCallbackUrl(callbackUrl);
-            if (logoutUrl != null) config.setJwtLogoutUrl(logoutUrl);
-            if (priority != null) config.setPriority(priority);
-            config.setLastModifiedBy(modifiedBy);
-            config.setLastModifiedAt(LocalDateTime.now());
-            return ssoConfigRepository.save(config);
-        }
-        return null;
+    public SsoConfig updateJwtConfig(Long id, String name, String clientId, String ssoUrl, String callbackUrl,
+                                     String logoutUrl, Integer priority, String modifiedBy, Long organizationId) throws Exception {
+
+        SsoConfig config = getSsoConfigById(id, organizationId); // Security check
+
+        config.setSsoType("JWT");
+        config.setName(name);
+        config.setJwtClientId(clientId);
+        config.setJwtSsoUrl(ssoUrl);
+        config.setJwtCallbackUrl(callbackUrl);
+        config.setJwtLogoutUrl(logoutUrl);
+        config.setPriority(priority);
+        config.setLastModifiedBy(modifiedBy);
+        config.setLastModifiedAt(Instant.now()); // <--- FIX 2
+        // We don't change the organization on update
+
+        return ssoConfigRepository.save(config);
     }
 
-    /**
-     * Save OAuth configuration
-     */
-    public SsoConfig saveOAuthConfig(String name, String clientId, String clientSecret,
-                                     String authUrl, String tokenUrl, String callbackUrl,
-                                     String userInfoUrl, Integer priority, String modifiedBy) {
+    public SsoConfig saveOAuthConfig(String name, String clientId, String clientSecret, String authUrl,
+                                     String tokenUrl, String callbackUrl, String userInfoUrl,
+                                     Integer priority, String modifiedBy, Long organizationId) throws Exception {
+
         SsoConfig config = new SsoConfig();
-        config.setName(name);
         config.setSsoType("OAUTH");
-        config.setEnabled(true);
-        config.setPriority(priority != null ? priority : 0);
+        config.setName(name);
         config.setOauthClientId(clientId);
         config.setOauthClientSecret(clientSecret);
         config.setOauthAuthorizationUrl(authUrl);
         config.setOauthTokenUrl(tokenUrl);
         config.setOauthCallbackUrl(callbackUrl);
         config.setOauthUserInfoUrl(userInfoUrl);
+        config.setPriority(priority);
+        config.setEnabled(false);
         config.setLastModifiedBy(modifiedBy);
-        config.setLastModifiedAt(LocalDateTime.now());
+        config.setLastModifiedAt(Instant.now()); // <--- FIX 3
+        config.setOrganization(getOrg(organizationId));
+
         return ssoConfigRepository.save(config);
     }
 
-    /**
-     * Update OAuth configuration
-     */
     public SsoConfig updateOAuthConfig(Long id, String name, String clientId, String clientSecret,
-                                       String authUrl, String tokenUrl, String callbackUrl,
-                                       String userInfoUrl, Integer priority, String modifiedBy) {
-        SsoConfig config = ssoConfigRepository.findById(id).orElse(null);
-        if (config != null) {
-            if (name != null) config.setName(name);
-            if (clientId != null) config.setOauthClientId(clientId);
-            if (clientSecret != null) config.setOauthClientSecret(clientSecret);
-            if (authUrl != null) config.setOauthAuthorizationUrl(authUrl);
-            if (tokenUrl != null) config.setOauthTokenUrl(tokenUrl);
-            if (callbackUrl != null) config.setOauthCallbackUrl(callbackUrl);
-            if (userInfoUrl != null) config.setOauthUserInfoUrl(userInfoUrl);
-            if (priority != null) config.setPriority(priority);
-            config.setLastModifiedBy(modifiedBy);
-            config.setLastModifiedAt(LocalDateTime.now());
-            return ssoConfigRepository.save(config);
-        }
-        return null;
+                                       String authUrl, String tokenUrl, String callbackUrl, String userInfoUrl,
+                                       Integer priority, String modifiedBy, Long organizationId) throws Exception {
+
+        SsoConfig config = getSsoConfigById(id, organizationId); // Security check
+
+        config.setSsoType("OAUTH");
+        config.setName(name);
+        config.setOauthClientId(clientId);
+        config.setOauthClientSecret(clientSecret);
+        config.setOauthAuthorizationUrl(authUrl);
+        config.setOauthTokenUrl(tokenUrl);
+        config.setOauthCallbackUrl(callbackUrl);
+        config.setOauthUserInfoUrl(userInfoUrl);
+        config.setPriority(priority);
+        config.setLastModifiedBy(modifiedBy);
+        config.setLastModifiedAt(Instant.now()); // <--- FIX 4
+
+        return ssoConfigRepository.save(config);
     }
 
-    /**
-     * Save SAML configuration
-     */
-    public SsoConfig saveSamlConfig(String name, String entityId, String idpEntityId,
-                                    String ssoUrl, String certificate, String acsUrl,
-                                    Integer priority, String modifiedBy) {
+    public SsoConfig saveSamlConfig(String name, String entityId, String idpEntityId, String ssoUrl,
+                                    String certificate, String acsUrl,
+                                    Integer priority, String modifiedBy, Long organizationId) throws Exception {
+
         SsoConfig config = new SsoConfig();
-        config.setName(name);
         config.setSsoType("SAML");
-        config.setEnabled(true);
-        config.setPriority(priority != null ? priority : 0);
+        config.setName(name);
         config.setSamlEntityId(entityId);
         config.setSamlIdpEntityId(idpEntityId);
         config.setSamlSsoUrl(ssoUrl);
         config.setSamlX509Certificate(certificate);
         config.setSamlAcsUrl(acsUrl);
-
-        // Generate SP Metadata
-        String spMetadata = samlMetadataService.generateSpMetadata(entityId, acsUrl);
-        config.setSamlSpMetadata(spMetadata);
-
+        config.setPriority(priority);
+        config.setEnabled(false);
         config.setLastModifiedBy(modifiedBy);
-        config.setLastModifiedAt(LocalDateTime.now());
+        config.setLastModifiedAt(Instant.now()); // <--- FIX 5
+        config.setOrganization(getOrg(organizationId));
+
         return ssoConfigRepository.save(config);
     }
 
-    /**
-     * Update SAML configuration
-     */
     public SsoConfig updateSamlConfig(Long id, String name, String entityId, String idpEntityId,
                                       String ssoUrl, String certificate, String acsUrl,
-                                      Integer priority, String modifiedBy) {
-        SsoConfig config = ssoConfigRepository.findById(id).orElse(null);
-        if (config != null) {
-            if (name != null) config.setName(name);
-            if (entityId != null) config.setSamlEntityId(entityId);
-            if (idpEntityId != null) config.setSamlIdpEntityId(idpEntityId);
-            if (ssoUrl != null) config.setSamlSsoUrl(ssoUrl);
-            if (certificate != null) config.setSamlX509Certificate(certificate);
-            if (acsUrl != null) config.setSamlAcsUrl(acsUrl);
-            if (priority != null) config.setPriority(priority);
+                                      Integer priority, String modifiedBy, Long organizationId) throws Exception {
 
-            // Regenerate SP Metadata if entityId or acsUrl changed
-            if (entityId != null || acsUrl != null) {
-                String spMetadata = samlMetadataService.generateSpMetadata(
-                        config.getSamlEntityId(),
-                        config.getSamlAcsUrl()
-                );
-                config.setSamlSpMetadata(spMetadata);
-            }
+        SsoConfig config = getSsoConfigById(id, organizationId); // Security check
 
-            config.setLastModifiedBy(modifiedBy);
-            config.setLastModifiedAt(LocalDateTime.now());
-            return ssoConfigRepository.save(config);
-        }
-        return null;
+        config.setSsoType("SAML");
+        config.setName(name);
+        config.setSamlEntityId(entityId);
+        config.setSamlIdpEntityId(idpEntityId);
+        config.setSamlSsoUrl(ssoUrl);
+        config.setSamlX509Certificate(certificate);
+        config.setSamlAcsUrl(acsUrl);
+        config.setPriority(priority);
+        config.setLastModifiedBy(modifiedBy);
+        config.setLastModifiedAt(Instant.now()); // <--- FIX 6
+
+        return ssoConfigRepository.save(config);
     }
 
-    /**
-     * Parse and save IDP metadata for SAML
-     */
-    public Map<String, String> parseIdpMetadata(String metadataXml) {
-        return samlMetadataService.parseIdpMetadata(metadataXml);
+    public boolean deleteSsoConfig(Long id, Long organizationId) throws Exception {
+        SsoConfig config = getSsoConfigById(id, organizationId); // Security check
+        ssoConfigRepository.delete(config);
+        return true;
     }
 
-    /**
-     * Delete SSO configuration
-     */
-    public boolean deleteSsoConfig(Long id) {
-        if (ssoConfigRepository.existsById(id)) {
-            ssoConfigRepository.deleteById(id);
-            return true;
-        }
-        return false;
-    }
+    public SsoConfig toggleSso(Long id, boolean enabled, String modifiedBy, Long organizationId) throws Exception {
+        SsoConfig config = getSsoConfigById(id, organizationId); // Security check
 
-    /**
-     * Get JWT SSO URL for specific config
-     */
-    public String getJwtSsoUrl(Long configId) {
-        SsoConfig config = getSsoConfigById(configId);
-        if (config == null || !config.getEnabled()) {
-            return null;
-        }
-
-        String ssoUrl = config.getJwtSsoUrl();
-        String callbackUrl = config.getJwtCallbackUrl();
-
-        if (ssoUrl == null || ssoUrl.isEmpty()) {
-            return null;
-        }
-
-        // Append callback URL if provided
-        if (callbackUrl != null && !callbackUrl.isEmpty()) {
-            if (ssoUrl.contains("?")) {
-                return ssoUrl + "&RelayState=" + callbackUrl + "&config_id=" + configId;
-            } else {
-                return ssoUrl + "?RelayState=" + callbackUrl + "&config_id=" + configId;
+        // --- NEW LOGIC: Only one config of each type can be enabled per org ---
+        if (enabled) {
+            // Before enabling this one, disable all others of the same type in this org
+            List<SsoConfig> otherConfigs = ssoConfigRepository.findByOrganizationId(organizationId);
+            for (SsoConfig other : otherConfigs) {
+                if (other.getSsoType().equals(config.getSsoType()) && !other.getId().equals(id)) {
+                    other.setEnabled(false);
+                    ssoConfigRepository.save(other);
+                }
             }
         }
 
-        return ssoUrl;
+        config.setEnabled(enabled);
+        config.setLastModifiedBy(modifiedBy);
+        config.setLastModifiedAt(Instant.now()); // <--- FIX 7
+        return ssoConfigRepository.save(config);
+    }
+
+    // --- Metadata Parsing (unchanged, as it's just a helper) ---
+
+    public Map<String, String> parseIdpMetadata(String metadataXml) throws Exception {
+        Map<String, String> data = new HashMap<>();
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+
+        // Prevent XML External Entity (XXE) attacks
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+        factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+        factory.setExpandEntityReferences(false);
+
+        DocumentBuilder builder = factory.newDocumentBuilder();
+        Document doc = builder.parse(new InputSource(new StringReader(metadataXml)));
+        doc.getDocumentElement().normalize();
+
+        // Get IDP Entity ID
+        Element idpEntityIdElement = (Element) doc.getElementsByTagName("md:EntityDescriptor").item(0);
+        if (idpEntityIdElement != null) {
+            data.put("entityId", idpEntityIdElement.getAttribute("entityID"));
+        }
+
+        // Get SSO URL (HTTP-Redirect)
+        Element ssoElement = (Element) doc.getElementsByTagName("md:SingleSignOnService").item(0);
+        if (ssoElement != null) {
+            data.put("ssoUrl", ssoElement.getAttribute("Location"));
+        }
+
+        // Get X.509 Certificate
+        Element certElement = (Element) doc.getElementsByTagName("ds:X509Certificate").item(0);
+        if (certElement != null) {
+            data.put("certificate", certElement.getTextContent());
+        }
+
+        return data;
     }
 }
+

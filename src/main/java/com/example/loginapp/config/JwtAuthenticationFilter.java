@@ -1,23 +1,27 @@
 package com.example.loginapp.config;
 
+import com.example.loginapp.security.CustomUserDetails;
 import com.example.loginapp.service.CustomUserDetailsService;
+import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.List;
 
 @Component
+@Order(2) // Runs after TenantIdentifierFilter @Order(1)
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Autowired
@@ -26,22 +30,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Autowired
     private CustomUserDetailsService userDetailsService;
 
-    // --- FIX: ---
-    // Add all public prefixes to this list
-    private static final List<String> PUBLIC_PATHS_PREFIXES = Arrays.asList(
-            "/sso/",
-            "/saml/",
-            "/oauth/"
-    );
-
-    // Add all public exact paths
-    private static final List<String> PUBLIC_PATHS_EXACT = Arrays.asList(
+    // A list of public paths to skip
+    private static final List<String> PUBLIC_PATHS = List.of(
             "/",
             "/signup",
             "/register",
-            "/login",
             "/api/test",
-            "/error"
+            "/login", // <-- Skipping /login is important for form auth
+            "/logout",
+            "/error",
+            "/api/tenant/info", // <-- API for login page
+            "/api/sso-configs/tenant" // <-- API for login page
+    );
+
+    // A list of public path prefixes to skip
+    private static final List<String> PUBLIC_PATH_PREFIXES = List.of(
+            "/sso/",
+            "/saml/",
+            "/oauth/"
     );
 
     @Override
@@ -50,45 +56,65 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String path = request.getRequestURI();
 
-        // --- FIX: ---
-        // Check if the path is public
-        boolean isPublicPrefix = PUBLIC_PATHS_PREFIXES.stream().anyMatch(path::startsWith);
-        boolean isPublicExact = PUBLIC_PATHS_EXACT.contains(path);
+        // Check if the path is in our public lists
+        boolean isPublicPath = PUBLIC_PATHS.contains(path) ||
+                PUBLIC_PATH_PREFIXES.stream().anyMatch(path::startsWith);
 
-        // If it's a public path, skip the filter logic
-        if (isPublicPrefix || isPublicExact) {
+        // If it's a public path (like /login), skip all JWT logic
+        // and let the filter chain continue (to the TenantIdentifierFilter's "finally" block)
+        if (isPublicPath) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        // --- Your existing logic ---
-        String authorizationHeader = request.getHeader("Authorization");
-        String token = null;
-        String username = null;
+        try {
+            String jwt = extractJwtFromRequest(request);
 
-        // Extract JWT token from header
-        if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
-            token = authorizationHeader.substring(7);
-            try {
-                username = jwtUtil.extractUsername(token);
-            } catch (Exception e) {
-                logger.error("JWT Token extraction failed", e);
-            }
-        }
+            if (StringUtils.hasText(jwt) && jwtUtil.validateToken(jwt)) {
+                String username = jwtUtil.extractUsername(jwt);
+                Long organizationId = jwtUtil.extractOrganizationId(jwt);
+                List<GrantedAuthority> authorities = jwtUtil.extractAuthorities(jwt);
 
-        // Validate token and set authentication
-        if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+                // --- IMPORTANT ---
+                // Manually set the TenantContext for this JWT-authenticated request
+                // This ensures all downstream services know the tenant
+                // This is safe because TenantIdentifierFilter *already* ran and its
+                // context will be cleared by its *own* finally block.
+                TenantContext.setCurrentOrganizationId(organizationId);
 
-            if (jwtUtil.validateToken(token, userDetails)) {
-                UsernamePasswordAuthenticationToken authToken =
+                // We must use the 4-argument constructor
+                CustomUserDetails userDetails = new CustomUserDetails(
+                        username,
+                        null, // Password is not needed
+                        authorities,
+                        organizationId
+                );
+
+                UsernamePasswordAuthenticationToken authentication =
                         new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
-                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                SecurityContextHolder.getContext().setAuthentication(authToken);
+                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+
+                SecurityContextHolder.getContext().setAuthentication(authentication);
             }
+        } catch (Exception ex) {
+            logger.error("Could not set user authentication in security context", ex);
         }
+
+        // --- FIX: REMOVED THE ENTIRE 'finally' BLOCK ---
+        // The TenantIdentifierFilter is already responsible for
+        // clearing the TenantCo    ntext in its own 'finally' block,
+        // which wraps this entire request.
+        // Adding another 'finally' here clears the context prematurely
+        // during form login.
 
         filterChain.doFilter(request, response);
     }
-}
 
+    private String extractJwtFromRequest(HttpServletRequest request) {
+        String bearerToken = request.getHeader("Authorization");
+        if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
+            return bearerToken.substring(7);
+        }
+        return null;
+    }
+}

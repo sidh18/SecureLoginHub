@@ -1,80 +1,82 @@
 package com.example.loginapp.controller;
 
-import com.example.loginapp.service.CustomUserDetailsService;
-import com.example.loginapp.config.JwtUtil;
+import com.example.loginapp.config.TenantContext;
+import com.example.loginapp.model.Organization;
+import com.example.loginapp.model.SsoConfig;
+import com.example.loginapp.repository.OrganizationRepository;
+import com.example.loginapp.service.SsoConfigService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Date;
-import java.util.HashMap;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api")
 public class ApiController {
 
     @Autowired
-    private JwtUtil jwtUtil;
+    private SsoConfigService ssoConfigService;
 
     @Autowired
-    private CustomUserDetailsService userDetailsService;
+    private OrganizationRepository organizationRepository;
 
+    /**
+     * A simple public endpoint for testing.
+     */
     @GetMapping("/test")
-    public ResponseEntity<?> test() {
-        Map<String, String> response = new HashMap<>();
-        response.put("message", "API is working!");
-        response.put("timestamp", new Date().toString());
-        return ResponseEntity.ok(response);
+    public ResponseEntity<Map<String, String>> testApi() {
+        return ResponseEntity.ok(Map.of("message", "API is working!"));
     }
 
-    @GetMapping("/secure")
-    public ResponseEntity<?> secureEndpoint() {
-        Map<String, String> response = new HashMap<>();
-        response.put("message", "You have accessed a secure endpoint!");
-        response.put("timestamp", new Date().toString());
-        return ResponseEntity.ok(response);
-    }
+    /**
+     * Endpoint to get public information about the current tenant
+     * This is called by the login.html page.
+     */
+    @GetMapping("/tenant/info")
+    public ResponseEntity<Map<String, String>> getTenantInfo() {
+        Long organizationId = TenantContext.getCurrentOrganizationId();
 
-    @PostMapping("/validate-token")
-    public ResponseEntity<?> validateToken(@RequestHeader("Authorization") String authHeader) {
-        try {
-            String token = authHeader.substring(7);
-            String username = jwtUtil.extractUsername(token);
-            UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+        if (organizationId == null) {
+            // This could be the superadmin.localhost domain or a non-tenant domain
+            // Check the subdomain
+            String subdomain = TenantContext.getCurrentSubdomain();
+            if ("superadmin".equals(subdomain)) {
+                return ResponseEntity.ok(Map.of("name", "Superadmin Login"));
+            }
+            // You can decide what to show for the 'root' domain
+            return ResponseEntity.ok(Map.of("name", "Login"));
+        }
 
-            boolean isValid = jwtUtil.validateToken(token, userDetails);
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("valid", isValid);
-            response.put("username", username);
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Invalid token"));
+        Optional<Organization> org = organizationRepository.findById(organizationId);
+        if (org.isPresent()) {
+            return ResponseEntity.ok(Map.of("name", org.get().getName()));
+        } else {
+            // This case should ideally not happen if TenantIdentifierFilter is working
+            return ResponseEntity.notFound().build();
         }
     }
 
-    @GetMapping("/token-info")
-    public ResponseEntity<?> getTokenInfo(@RequestHeader("Authorization") String authHeader) {
-        try {
-            String token = authHeader.substring(7);
-            String username = jwtUtil.extractUsername(token);
-            Date expiration = jwtUtil.extractExpiration(token);
+    /**
+     * Endpoint to get the list of ENABLED SSO configurations
+     * for the current tenant. This is called by the login.html page.
+     */
+    @GetMapping("/sso-configs/tenant")
+    public ResponseEntity<List<SsoConfig>> getTenantSsoConfigs() {
+        Long organizationId = TenantContext.getCurrentOrganizationId();
 
-            Map<String, Object> response = new HashMap<>();
-            response.put("username", username);
-            response.put("expiresAt", expiration);
-            response.put("isValid", jwtUtil.validateToken(token));
-
-            long timeLeft = expiration.getTime() - System.currentTimeMillis();
-            response.put("timeLeftSeconds", timeLeft / 1000);
-            response.put("timeLeftMinutes", timeLeft / 60000);
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Invalid token"));
+        if (organizationId == null) {
+            // Superadmin domain has no SSO login, only username/password
+            return ResponseEntity.ok(Collections.emptyList());
         }
+
+        List<SsoConfig> configs = ssoConfigService.getEnabledSsoConfigsForOrganization(organizationId);
+        return ResponseEntity.ok(configs);
     }
 }
+

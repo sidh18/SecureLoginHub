@@ -19,9 +19,22 @@
             justify-content: space-between;
             align-items: center;
         }
-        .navbar h1 {
+        .navbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .navbar-brand h1 {
             margin: 0;
             color: #667eea;
+        }
+        /* Style for the dynamic organization name */
+        .org-name {
+            font-size: 20px;
+            font-weight: 300;
+            color: #555;
+            border-left: 2px solid #ddd;
+            padding-left: 15px;
         }
         .logout-btn {
             padding: 10px 25px;
@@ -93,11 +106,23 @@
         .copy-btn:hover {
             background: #218838;
         }
+        /* Style for the "Copied!" message */
+        #copy-message {
+            margin-left: 10px;
+            color: #28a745;
+            font-weight: bold;
+            font-size: 14px;
+            transition: opacity 0.5s;
+        }
     </style>
 </head>
 <body>
 <div class="navbar">
-    <h1>DEMOGRAM</h1>
+    <div class="navbar-brand">
+        <h1>DEMOGRAM</h1>
+        <!-- This span will be filled by JavaScript -->
+        <span id="organization-name" class="org-name"></span>
+    </div>
     <form th:action="@{/logout}" method="post" style="margin: 0;">
         <button type="submit" class="logout-btn">Logout</button>
     </form>
@@ -107,23 +132,76 @@
         <h2>Hello, <span class="username" th:text="${username}"></span>!</h2>
         <p style="color: #666; font-size: 18px;">Welcome to your dashboard</p>
 
-<!--        <div class="jwt-section" th:if="${jwtToken}">-->
-<!--            <h3>Your JWT Token:</h3>-->
-<!--            <div class="jwt-token" id="jwtToken" th:text="${jwtToken}"></div>-->
-<!--            <button class="copy-btn" onclick="copyToken()">📋 Copy Token</button>-->
-<!--            <p style="font-size: 12px; color: #666; margin-top: 10px;">-->
-<!--                Use this token to access API endpoints-->
-<!--            </p>-->
-<!--        </div>-->
+        <!-- Re-enabled the JWT section -->
+        <div class="jwt-section" th:if="${jwtToken}">
+            <h3>Your JWT Token:</h3>
+            <div class="jwt-token" id="jwtToken" th:text="${jwtToken}"></div>
+            <button class="copy-btn" onclick="copyToken()">📋 Copy Token</button>
+            <!-- This span will show "Copied!" instead of an alert -->
+            <span id="copy-message"></span>
+            <p style="font-size: 12px; color: #666; margin-top: 10px;">
+                Use this token to access API endpoints
+            </p>
+        </div>
     </div>
 </div>
 
 <script th:inline="javascript">
+
+    // --- 1. Fetch Tenant Info on Page Load ---
+    window.addEventListener('DOMContentLoaded', () => {
+        fetch('/api/tenant/info')
+            .then(response => response.json())
+            .then(data => {
+                if (data.name && data.name !== "Login" && data.name !== "Superadmin Login") {
+                    document.getElementById('organization-name').textContent = data.name;
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching tenant info:', error);
+            });
+    });
+
+    // --- 2. Fixed Copy-to-Clipboard Function (No Alerts) ---
     function copyToken() {
         const tokenText = document.getElementById('jwtToken').textContent;
-        navigator.clipboard.writeText(tokenText).then(() => {
-            alert('Token copied to clipboard!');
-        });
+        const copyMessageEl = document.getElementById('copy-message');
+
+        // Create a temporary textarea to hold the text
+        const tempTextArea = document.createElement('textarea');
+        tempTextArea.value = tokenText;
+        document.body.appendChild(tempTextArea);
+
+        // Select and copy the text
+        tempTextArea.select();
+        tempTextArea.setSelectionRange(0, 99999); // For mobile devices
+
+        try {
+            // Use execCommand as it's more reliable in iframes
+            document.execCommand('copy');
+
+            // Show "Copied!" message
+            copyMessageEl.textContent = 'Copied!';
+            copyMessageEl.style.opacity = '1';
+
+            // Fade out the message after 2 seconds
+            setTimeout(() => {
+                copyMessageEl.style.opacity = '0';
+            }, 2000);
+
+        } catch (err) {
+            console.error('Failed to copy token: ', err);
+            copyMessageEl.textContent = 'Failed!';
+            copyMessageEl.style.color = '#dc3545'; // Make it red
+            copyMessageEl.style.opacity = '1';
+
+            setTimeout(() => {
+                copyMessageEl.style.opacity = '0';
+            }, 2000);
+        }
+
+        // Remove the temporary textarea
+        document.body.removeChild(tempTextArea);
     }
 </script>
 </body>

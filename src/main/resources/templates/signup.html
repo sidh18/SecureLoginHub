@@ -18,7 +18,8 @@
             padding: 40px;
             border-radius: 10px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-            width: 350px;
+            width: 400px; /* Increased width for better message display */
+            max-width: 90%;
         }
         h2 {
             text-align: center;
@@ -76,9 +77,14 @@
 </head>
 <body>
 <div class="container">
-    <h2>Sign Up</h2>
+    <!-- This title will be changed by JavaScript -->
+    <h2 id="tenant-name">Sign Up</h2>
+
+    <!-- Thymeleaf error for form submission errors -->
     <div th:if="${error}" class="error" th:text="${error}"></div>
-    <form th:action="@{/register}" method="post">
+
+    <!-- Give the form an ID so we can hide it -->
+    <form th:action="@{/register}" method="post" id="signup-form">
         <div class="form-group">
             <label for="username">Username</label>
             <input type="text" id="username" name="username" required>
@@ -89,9 +95,64 @@
         </div>
         <button type="submit">Sign Up</button>
     </form>
-    <div class="link">
+
+    <!-- Give the link an ID so we can hide it -->
+    <div class="link" id="login-link">
         Already have an account? <a href="/">Login</a>
     </div>
 </div>
+
+<script>
+    window.addEventListener('DOMContentLoaded', () => {
+        // --- 1. Fetch Tenant Info ---
+        fetch('/api/tenant/info')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                const tenantNameEl = document.getElementById('tenant-name');
+                const containerEl = document.querySelector('.container');
+                const formEl = document.getElementById('signup-form');
+                const loginLinkEl = document.getElementById('login-link');
+
+                if (data.name) {
+                    // Check if this is the superadmin or root domain
+                    if (data.name === "Superadmin Login" || data.name === "Login") {
+
+                        // 1. Change title and hide form
+                        tenantNameEl.innerHTML = "Registration Disabled";
+                        if (formEl) formEl.style.display = 'none';
+                        if (loginLinkEl) loginLinkEl.style.display = 'none';
+
+                        // 2. Add an error message
+                        const errorDiv = document.createElement('div');
+                        errorDiv.className = 'error'; // Use existing style
+                        errorDiv.style.marginTop = '0px';
+                        errorDiv.innerHTML = 'New accounts must be created from a specific organization subdomain (e.g., acme.localhost/signup).';
+                        containerEl.appendChild(errorDiv);
+
+                        // 3. Add a link back to the login page
+                        const backLink = document.createElement('div');
+                        backLink.className = 'link';
+                        backLink.innerHTML = '<a href="/">Go to Login</a>';
+                        containerEl.appendChild(backLink);
+
+                    } else {
+                        // This is a valid tenant (e.g., "Acme Inc.")
+                        // Update the title to be "Sign Up for [Tenant Name]"
+                        tenantNameEl.innerHTML = `Sign Up for ${data.name}`;
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching tenant info:', error);
+                // If it fails, the default "Sign Up" title will remain
+            });
+    });
+</script>
+
 </body>
 </html>

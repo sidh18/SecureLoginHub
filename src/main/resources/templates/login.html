@@ -57,8 +57,11 @@
         button:hover {
             background: #5568d3;
         }
+        /* This is the new container for dynamic SSO content */
         .sso-section {
             margin-top: 30px;
+            /* Will be hidden by default and shown by JS */
+            display: none;
         }
         .sso-buttons {
             display: flex;
@@ -143,22 +146,23 @@
             font-size: 14px;
             font-weight: bold;
         }
-        .sso-title {
-            text-align: center;
-            color: #666;
-            font-size: 14px;
-            margin-bottom: 15px;
-            font-weight: 600;
-        }
     </style>
 </head>
 <body>
 <div class="container">
-    <h2>🔐 Login</h2>
+    <!--
+      STEP 1: Give the title an ID so we can change it.
+      It defaults to "Login" and will be replaced by JS.
+    -->
+    <h2 id="tenant-name">🔐 Login</h2>
+
+    <!-- These Thymeleaf error messages will STILL work on redirect -->
     <div th:if="${message}" class="message success" th:text="${message}"></div>
     <div th:if="${param.error}" class="message error">Invalid username or password!</div>
     <div th:if="${param.error == 'sso_not_configured'}" class="message error">SSO is not configured properly!</div>
     <div th:if="${param.error == 'saml_not_configured'}" class="message error">SAML SSO is not configured properly!</div>
+
+    <!-- The standard login form is unchanged -->
     <form th:action="@{/login}" method="post">
         <div class="form-group">
             <label for="username">Username</label>
@@ -171,46 +175,119 @@
         <button type="submit">Login with Credentials</button>
     </form>
 
-    <!-- Show SSO buttons if any SSO is enabled -->
-    <div th:if="${ssoEnabled}" class="sso-section">
+    <!--
+      STEP 2: Create a container for the dynamic SSO section.
+      It's hidden by default and will be shown by JS if SSO configs exist.
+    -->
+    <div id="sso-section" class="sso-section">
         <div class="divider">
             <hr>
             <span>OR LOGIN WITH</span>
         </div>
-
-        <div class="sso-buttons">
-            <!-- Loop through all enabled SSO configurations -->
-            <div th:each="ssoConfig : ${ssoConfigs}">
-                <!-- JWT SSO Button -->
-                <a th:if="${ssoConfig.ssoType == 'JWT'}"
-                   th:href="@{/sso/login/{id}(id=${ssoConfig.id})}"
-                   class="sso-button jwt">
-                    <span class="sso-button-icon">🔑</span>
-                    <span th:text="${ssoConfig.name}">JWT SSO</span>
-                </a>
-
-                <!-- OAuth SSO Button -->
-                <a th:if="${ssoConfig.ssoType == 'OAUTH'}"
-                   th:href="@{/oauth/login/{id}(id=${ssoConfig.id})}"
-                   class="sso-button oauth">
-                    <span class="sso-button-icon">🔓</span>
-                    <span th:text="${ssoConfig.name}">OAuth SSO</span>
-                </a>
-
-                <!-- SAML SSO Button -->
-                <a th:if="${ssoConfig.ssoType == 'SAML'}"
-                   th:href="@{/saml/login/{id}(id=${ssoConfig.id})}"
-                   class="sso-button saml">
-                    <span class="sso-button-icon">🛡️</span>
-                    <span th:text="${ssoConfig.name}">SAML SSO</span>
-                </a>
-            </div>
+        <!-- This is where the JS will inject the button HTML -->
+        <div class="sso-buttons" id="sso-buttons-container">
+            <!-- Dynamic SSO buttons will be injected here -->
         </div>
     </div>
 
+    <!-- The signup link is unchanged -->
     <div class="link">
         Don't have an account? <a href="/signup">Sign Up</a>
     </div>
 </div>
+
+<!--
+  STEP 3: Add the JavaScript to fetch data and build the page.
+-->
+<script>
+    // Wait for the DOM to be fully loaded before running scripts
+    window.addEventListener('DOMContentLoaded', () => {
+
+        const tenantNameEl = document.getElementById('tenant-name');
+        const ssoSectionEl = document.getElementById('sso-section');
+        const ssoButtonsContainerEl = document.getElementById('sso-buttons-container');
+
+        // --- 1. Fetch Tenant Info ---
+        fetch('/api/tenant/info')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Update the title with the tenant's name
+                if (data.name) {
+                    tenantNameEl.innerHTML = `🔐 ${data.name}`;
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching tenant info:', error);
+                // If it fails, the default "Login" title will remain
+            });
+
+        // --- 2. Fetch Tenant-Specific SSO Configs ---
+        fetch('/api/sso-configs/tenant')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(configs => {
+                // Check if the configs array exists and is not empty
+                if (configs && configs.length > 0) {
+
+                    // Show the "OR LOGIN WITH" divider and section
+                    ssoSectionEl.style.display = 'block';
+
+                    // Loop through each config and create a button
+                    configs.forEach(config => {
+                        let ssoButtonHtml = '';
+                        let icon = '';
+                        let ssoClass = '';
+                        // Note: The hrefs are root-relative, which is correct
+                        let href = '';
+
+                        switch (config.ssoType) {
+                            case 'JWT':
+                                ssoClass = 'jwt';
+                                icon = '🔑';
+                                href = `/sso/login`; // <-- FIX: Removed config.id
+                                break;
+                            case 'OAUTH':
+                                ssoClass = 'oauth';
+                                icon = '🔓';
+                                href = `/oauth/login`; // <-- FIX: Removed config.id
+                                break;
+                            case 'SAML':
+                                ssoClass = 'saml';
+                                icon = '🛡️';
+                                href = `/saml/login`; // <-- FIX: Removed config.id
+                                break;
+                        }
+
+                        // Build the button HTML and add it to the container
+                        if (href) { // Only add if it's a known type
+                            ssoButtonHtml = `
+                                <a href="${href}" class="sso-button ${ssoClass}">
+                                    <span class="sso-button-icon">${icon}</span>
+                                    <span>${config.name}</span>
+                                </a>
+                            `;
+                            ssoButtonsContainerEl.innerHTML += ssoButtonHtml;
+                        }
+                    });
+                }
+                // If no configs, the sso-section remains hidden
+            })
+            .catch(error => {
+                console.error('Error fetching SSO configs:', error);
+                // If this fails, no SSO buttons will be shown.
+            });
+    });
+</script>
+
 </body>
 </html>
+

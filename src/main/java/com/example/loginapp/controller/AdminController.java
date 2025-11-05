@@ -1,7 +1,9 @@
 package com.example.loginapp.controller;
 
 import com.example.loginapp.model.user;
+// import com.example.loginapp.model.Organization; // No longer needed here
 import com.example.loginapp.model.SsoConfig;
+import com.example.loginapp.security.CustomUserDetails; // Import our new class
 import com.example.loginapp.service.AdminService;
 import com.example.loginapp.service.SsoConfigService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,12 +13,11 @@ import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 @Controller
-@RequestMapping("/admin")
+@RequestMapping("/admin") // This controller is now ONLY for ROLE_ADMIN
 public class AdminController {
 
     @Autowired
@@ -26,57 +27,98 @@ public class AdminController {
     private SsoConfigService ssoConfigService;
 
     /**
+     * Helper method to get the current authenticated user's details.
+     */
+    private CustomUserDetails getAuthUser(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails)) {
+            // This should not happen if the endpoint is secured, but as a safeguard:
+            throw new SecurityException("User is not authenticated or session is invalid.");
+        }
+        return (CustomUserDetails) authentication.getPrincipal();
+    }
+
+    /**
      * Admin Dashboard Home
+     * This is now tenant-aware.
      */
     @GetMapping("/dashboard")
     public String adminDashboard(Model model, Authentication authentication) {
-        // Check if user is admin
-        if (authentication == null || !hasRole(authentication, "ADMIN")) {
-            return "home";
+        CustomUserDetails authUser = getAuthUser(authentication);
+        Long orgId = authUser.getOrganizationId();
+
+        // --- MODIFIED: Removed all superadmin logic ---
+        // A ROLE_ADMIN will always have an orgId
+        if (orgId == null) {
+            // This should not happen due to SecurityConfig, but as a safeguard
+            return "redirect:/logout?error=invalid_session";
         }
 
-        List<user> users = adminService.getAllUsers();
-        List<SsoConfig> ssoConfigs = ssoConfigService.getAllSsoConfigs();
-
-        // FIX: Provide a new, empty SsoConfig object instead of null
-        // This prevents the Thymeleaf template from crashing.
-        SsoConfig activeSsoConfig = ssoConfigService.getEnabledSsoConfigs()
-                .stream()
-                .findFirst()
-                .orElse(new SsoConfig()); // Changed from orElse(null)
+        // --- TENANT ADMIN VIEW ---
+        List<user> users = adminService.getAllUsersForOrganization(orgId);
+        List<SsoConfig> ssoConfigs = ssoConfigService.getAllSsoConfigsForOrganization(orgId);
 
         model.addAttribute("users", users);
         model.addAttribute("ssoConfigs", ssoConfigs);
-        model.addAttribute("adminUsername", authentication.getName());
-        model.addAttribute("ssoConfig", activeSsoConfig);
+        model.addAttribute("adminUsername", authUser.getUsername());
+        // model.addAttribute("isSuperAdmin", authUser.isSuperAdmin()); // No longer needed
+
+        // This logic is now handled in the table, so we pass the full list.
+        // We find the first *enabled* config for this org, if any.
+        SsoConfig activeConfig = ssoConfigs.stream()
+                .filter(SsoConfig::getEnabled)
+                .findFirst()
+                .orElse(null);
+
+        model.addAttribute("activeSsoConfig", activeConfig);
 
         return "admin-dashboard";
     }
 
     /**
-     * Get all users (REST API)
+     * Get all users (Tenant-Aware)
      */
     @GetMapping("/api/users")
     @ResponseBody
     public ResponseEntity<List<user>> getAllUsers(Authentication authentication) {
-        if (authentication == null || !hasRole(authentication, "ADMIN")) {
-            return ResponseEntity.status(403).build();
-        }
+        CustomUserDetails authUser = getAuthUser(authentication);
+        Long orgId = authUser.getOrganizationId();
 
-        List<user> users = adminService.getAllUsers();
+        // --- MODIFIED: Removed all superadmin logic ---
+        List<user> users = adminService.getAllUsersForOrganization(orgId);
         return ResponseEntity.ok(users);
     }
 
     /**
-     * Create new user
+     * Get a single user (Tenant-Aware)
+     * NEW: Added this endpoint for the "Edit User" modal
+     */
+    @GetMapping("/api/users/{id}")
+    @ResponseBody
+    public ResponseEntity<?> getUser(@PathVariable Long id, Authentication authentication) {
+        CustomUserDetails authUser = getAuthUser(authentication);
+        Long adminOrgId = authUser.getOrganizationId();
+
+        try {
+            user user = adminService.getUserById(id, adminOrgId);
+            if (user == null) {
+                return ResponseEntity.notFound().build();
+            }
+            return ResponseEntity.ok(user);
+        } catch (SecurityException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Create new user (Tenant-Aware)
      */
     @PostMapping("/api/users")
     @ResponseBody
     public ResponseEntity<?> createUser(@RequestBody Map<String, String> request,
                                         Authentication authentication) {
-        if (authentication == null || !hasRole(authentication, "ADMIN")) {
-            return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
-        }
+        CustomUserDetails authUser = getAuthUser(authentication);
+        // A tenant admin can ONLY create users for their own organization.
+        Long orgIdToAssign = authUser.getOrganizationId();
 
         try {
             String username = request.get("username");
@@ -86,24 +128,34 @@ public class AdminController {
             String lastName = request.get("lastName");
             String role = request.get("role");
 
-            user user = adminService.createUser(username, password, email, firstName, lastName, role);
+            // --- MODIFIED: Security check ---
+            // Tenant Admins cannot create Superadmins
+            if ("ROLE_SUPER_ADMIN".equals(role)) {
+                return ResponseEntity.status(403).body(Map.of("error", "Permission denied."));
+            }
+            // Tenant Admins can only create ROLE_USER or ROLE_ADMIN
+            if (!"ROLE_USER".equals(role) && !"ROLE_ADMIN".equals(role)) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Invalid role specified."));
+            }
+
+            user user = adminService.createUser(username, password, email, firstName, lastName, role, orgIdToAssign);
             return ResponseEntity.ok(user);
         } catch (Exception e) {
+            // --- FIX: Added missing return statement ---
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
     /**
-     * Update user
+     * Update user (Tenant-Aware)
      */
     @PutMapping("/api/users/{id}")
     @ResponseBody
     public ResponseEntity<?> updateUser(@PathVariable Long id,
                                         @RequestBody Map<String, Object> request,
                                         Authentication authentication) {
-        if (authentication == null || !hasRole(authentication, "ADMIN")) {
-            return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
-        }
+        CustomUserDetails authUser = getAuthUser(authentication);
+        Long adminOrgId = authUser.getOrganizationId(); // Admin's org
 
         try {
             String username = (String) request.get("username");
@@ -113,95 +165,101 @@ public class AdminController {
             String role = (String) request.get("role");
             Boolean active = (Boolean) request.get("active");
 
-            user user = adminService.updateUser(id, username, email, firstName, lastName, role, active);
+            // --- MODIFIED: Security check ---
+            // Tenant Admins cannot promote users to Superadmin
+            if ("ROLE_SUPER_ADMIN".equals(role)) {
+                return ResponseEntity.status(403).body(Map.of("error", "Permission denied."));
+            }
+            // Tenant Admins can only assign ROLE_USER or ROLE_ADMIN
+            if (!"ROLE_USER".equals(role) && !"ROLE_ADMIN".equals(role)) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Invalid role specified."));
+            }
+
+            // adminService.updateUser will perform the security check
+            user user = adminService.updateUser(id, username, email, firstName, lastName, role, active, adminOrgId, false); // false = not superadmin
             if (user == null) {
                 return ResponseEntity.notFound().build();
             }
             return ResponseEntity.ok(user);
         } catch (Exception e) {
+            // --- FIX: Added missing return statement ---
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
     /**
-     * Delete user
+     * Delete user (Tenant-Aware)
      */
     @DeleteMapping("/api/users/{id}")
     @ResponseBody
     public ResponseEntity<?> deleteUser(@PathVariable Long id, Authentication authentication) {
-        if (authentication == null || !hasRole(authentication, "ADMIN")) {
-            return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
-        }
+        CustomUserDetails authUser = getAuthUser(authentication);
+        Long adminOrgId = authUser.getOrganizationId(); // Admin's org
 
-        boolean deleted = adminService.deleteUser(id);
-        if (deleted) {
-            return ResponseEntity.ok(Map.of("message", "User deleted successfully"));
-        } else {
-            return ResponseEntity.notFound().build();
+        try {
+            // adminService.deleteUser will perform the security check
+            boolean deleted = adminService.deleteUser(id, adminOrgId, false); // false = not superadmin
+            if (deleted) {
+                return ResponseEntity.ok(Map.of("message", "User deleted successfully"));
+            } else {
+                return ResponseEntity.notFound().build();
+            }
+        } catch (Exception e) {
+            // --- FIX: Added missing return statement ---
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
-    /**
-     * Get all SSO configurations
-     */
+    // --- DELETED: All endpoints for /api/organizations are moved to SuperadminController ---
+
+    // --- SSO Config Endpoints (Now Tenant-Aware) ---
+
     @GetMapping("/api/sso-configs")
     @ResponseBody
     public ResponseEntity<List<SsoConfig>> getAllSsoConfigs(Authentication authentication) {
-        if (authentication == null || !hasRole(authentication, "ADMIN")) {
-            return ResponseEntity.status(403).build();
-        }
-
-        List<SsoConfig> configs = ssoConfigService.getAllSsoConfigs();
+        CustomUserDetails authUser = getAuthUser(authentication);
+        // --- MODIFIED: Removed all superadmin logic ---
+        List<SsoConfig> configs = ssoConfigService.getAllSsoConfigsForOrganization(authUser.getOrganizationId());
         return ResponseEntity.ok(configs);
     }
 
-    /**
-     * Get specific SSO configuration
-     */
     @GetMapping("/api/sso-configs/{id}")
     @ResponseBody
-    public ResponseEntity<SsoConfig> getSsoConfig(@PathVariable Long id, Authentication authentication) {
-        if (authentication == null || !hasRole(authentication, "ADMIN")) {
-            return ResponseEntity.status(403).build();
+    public ResponseEntity<?> getSsoConfig(@PathVariable Long id, Authentication authentication) {
+        CustomUserDetails authUser = getAuthUser(authentication);
+        try {
+            // Service method already performs tenant security check
+            SsoConfig config = ssoConfigService.getSsoConfigById(id, authUser.getOrganizationId());
+            return ResponseEntity.ok(config);
+        } catch (Exception e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         }
-
-        SsoConfig config = ssoConfigService.getSsoConfigById(id);
-        if (config == null) {
-            return ResponseEntity.notFound().build();
-        }
-        return ResponseEntity.ok(config);
     }
 
-    /**
-     * Toggle SSO
-     */
     @PostMapping("/api/sso-configs/{id}/toggle")
     @ResponseBody
     public ResponseEntity<?> toggleSso(@PathVariable Long id,
                                        @RequestBody Map<String, Boolean> request,
                                        Authentication authentication) {
-        if (authentication == null || !hasRole(authentication, "ADMIN")) {
-            return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
-        }
-
+        CustomUserDetails authUser = getAuthUser(authentication);
         boolean enabled = request.get("enabled");
-        SsoConfig config = ssoConfigService.toggleSso(id, enabled, authentication.getName());
-        if (config == null) {
-            return ResponseEntity.notFound().build();
+
+        try {
+            // Service method already performs tenant security check
+            SsoConfig config = ssoConfigService.toggleSso(id, enabled, authUser.getUsername(), authUser.getOrganizationId());
+            return ResponseEntity.ok(config);
+        } catch (Exception e) {
+            // --- FIX: Added missing return statement ---
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
-        return ResponseEntity.ok(config);
     }
 
-    /**
-     * Save JWT configuration
-     */
     @PostMapping("/api/sso-configs/jwt")
     @ResponseBody
     public ResponseEntity<?> saveJwtConfig(@RequestBody Map<String, Object> request,
                                            Authentication authentication) {
-        if (authentication == null || !hasRole(authentication, "ADMIN")) {
-            return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
-        }
+        CustomUserDetails authUser = getAuthUser(authentication);
+        Long adminOrgId = authUser.getOrganizationId();
 
         try {
             Long id = request.get("id") != null ? Long.valueOf(request.get("id").toString()) : null;
@@ -212,31 +270,31 @@ public class AdminController {
             String logoutUrl = (String) request.get("logoutUrl");
             Integer priority = request.get("priority") != null ? (Integer) request.get("priority") : 0;
 
+            // --- MODIFIED: Removed superadmin logic ---
+            // Tenant admin can only create for their own org
+
             SsoConfig config;
             if (id != null) {
                 config = ssoConfigService.updateJwtConfig(id, name, clientId, ssoUrl, callbackUrl,
-                        logoutUrl, priority, authentication.getName());
+                        logoutUrl, priority, authUser.getUsername(), adminOrgId);
             } else {
                 config = ssoConfigService.saveJwtConfig(name, clientId, ssoUrl, callbackUrl,
-                        logoutUrl, priority, authentication.getName());
+                        logoutUrl, priority, authUser.getUsername(), adminOrgId);
             }
 
             return ResponseEntity.ok(config);
         } catch (Exception e) {
+            // --- FIX: Added missing return statement ---
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
-    /**
-     * Save OAuth configuration
-     */
     @PostMapping("/api/sso-configs/oauth")
     @ResponseBody
     public ResponseEntity<?> saveOAuthConfig(@RequestBody Map<String, Object> request,
                                              Authentication authentication) {
-        if (authentication == null || !hasRole(authentication, "ADMIN")) {
-            return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
-        }
+        CustomUserDetails authUser = getAuthUser(authentication);
+        Long adminOrgId = authUser.getOrganizationId();
 
         try {
             Long id = request.get("id") != null ? Long.valueOf(request.get("id").toString()) : null;
@@ -249,33 +307,33 @@ public class AdminController {
             String userInfoUrl = (String) request.get("userInfoUrl");
             Integer priority = request.get("priority") != null ? (Integer) request.get("priority") : 0;
 
+            // --- MODIFIED: Removed superadmin logic ---
+            // Tenant admin can only create for their own org
+
             SsoConfig config;
             if (id != null) {
                 config = ssoConfigService.updateOAuthConfig(id, name, clientId, clientSecret,
                         authUrl, tokenUrl, callbackUrl, userInfoUrl,
-                        priority, authentication.getName());
+                        priority, authUser.getUsername(), adminOrgId);
             } else {
                 config = ssoConfigService.saveOAuthConfig(name, clientId, clientSecret, authUrl,
                         tokenUrl, callbackUrl, userInfoUrl,
-                        priority, authentication.getName());
+                        priority, authUser.getUsername(), adminOrgId);
             }
 
             return ResponseEntity.ok(config);
         } catch (Exception e) {
+            // --- FIX: Added missing return statement ---
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
-    /**
-     * Save SAML configuration
-     */
     @PostMapping("/api/sso-configs/saml")
     @ResponseBody
     public ResponseEntity<?> saveSamlConfig(@RequestBody Map<String, Object> request,
                                             Authentication authentication) {
-        if (authentication == null || !hasRole(authentication, "ADMIN")) {
-            return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
-        }
+        CustomUserDetails authUser = getAuthUser(authentication);
+        Long adminOrgId = authUser.getOrganizationId();
 
         try {
             Long id = request.get("id") != null ? Long.valueOf(request.get("id").toString()) : null;
@@ -287,34 +345,32 @@ public class AdminController {
             String acsUrl = (String) request.get("acsUrl");
             Integer priority = request.get("priority") != null ? (Integer) request.get("priority") : 0;
 
+            // --- MODIFIED: Removed superadmin logic ---
+            // Tenant admin can only create for their own org
+
             SsoConfig config;
             if (id != null) {
                 config = ssoConfigService.updateSamlConfig(id, name, entityId, idpEntityId,
                         ssoUrl, certificate, acsUrl,
-                        priority, authentication.getName());
+                        priority, authUser.getUsername(), adminOrgId);
             } else {
                 config = ssoConfigService.saveSamlConfig(name, entityId, idpEntityId, ssoUrl,
                         certificate, acsUrl,
-                        priority, authentication.getName());
+                        priority, authUser.getUsername(), adminOrgId);
             }
 
             return ResponseEntity.ok(config);
         } catch (Exception e) {
+            // --- FIX: Added missing return statement ---
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
-    /**
-     * Parse IDP metadata
-     */
     @PostMapping("/api/sso-configs/saml/parse-metadata")
     @ResponseBody
     public ResponseEntity<?> parseIdpMetadata(@RequestBody Map<String, String> request,
                                               Authentication authentication) {
-        if (authentication == null || !hasRole(authentication, "ADMIN")) {
-            return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
-        }
-
+        // This is a helper, no tenant logic needed
         try {
             String metadataXml = request.get("metadata");
             Map<String, String> parsedData = ssoConfigService.parseIdpMetadata(metadataXml);
@@ -324,30 +380,22 @@ public class AdminController {
         }
     }
 
-    /**
-     * Delete SSO configuration
-     */
     @DeleteMapping("/api/sso-configs/{id}")
     @ResponseBody
     public ResponseEntity<?> deleteSsoConfig(@PathVariable Long id, Authentication authentication) {
-        if (authentication == null || !hasRole(authentication, "ADMIN")) {
-            return ResponseEntity.status(403).body(Map.of("error", "Unauthorized"));
+        CustomUserDetails authUser = getAuthUser(authentication);
+        try {
+            // Service method already performs tenant security check
+            boolean deleted = ssoConfigService.deleteSsoConfig(id, authUser.getOrganizationId());
+            if (deleted) {
+                return ResponseEntity.ok(Map.of("message", "SSO configuration deleted successfully"));
+            } else {
+                return ResponseEntity.notFound().build();
+            }
+        } catch (Exception e) {
+            // --- FIX: Added missing return statement ---
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
-
-        boolean deleted = ssoConfigService.deleteSsoConfig(id);
-        if (deleted) {
-            return ResponseEntity.ok(Map.of("message", "SSO configuration deleted successfully"));
-        } else {
-            return ResponseEntity.notFound().build();
-        }
-    }
-
-    /**
-     * Helper method to check if user has role
-     */
-    private boolean hasRole(Authentication authentication, String role) {
-        return authentication.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_" + role) ||
-                        a.getAuthority().equals(role));
     }
 }
+
