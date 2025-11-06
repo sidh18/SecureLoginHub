@@ -499,7 +499,7 @@
                 <label>Subdomain *</label>
                 <input type="text" id="orgSubdomain" placeholder="e.g., acme">
                 <p style="font-size: 12px; color: #666; margin-top: 5px;">
-                    Users will log in at <strong id="subdomainPreview">acme</strong>.localhost
+                    Users will log in at <strong id="subdomainPreview">acme</strong>.sidhkocheta.cloud
                 </p>
             </div>
         </div>
@@ -704,7 +704,7 @@
                 tr.innerHTML = `
                     <td>${org.id}</td>
                     <td><strong>${org.name}</strong></td>
-                    <td><a href="http://${org.subdomain}.localhost:8080" target="_blank">${org.subdomain}</a></td>
+                    <td><a href="http://${org.subdomain}.sidhkocheta.cloud" target="_blank">${org.subdomain}</a></td>
                     <td>${org.createdAt ? new Date(org.createdAt).toLocaleDateString() : '-'}</td>
                     <td>
                         <div class="action-buttons">

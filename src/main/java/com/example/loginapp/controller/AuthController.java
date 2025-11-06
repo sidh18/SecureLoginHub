@@ -8,6 +8,7 @@ import com.example.loginapp.repository.UserRepository;
 import com.example.loginapp.security.CustomUserDetails;
 import com.example.loginapp.service.AdminService;
 import com.example.loginapp.model.user;
+import jakarta.servlet.http.HttpSession;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -16,6 +17,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -153,9 +155,43 @@ public class AuthController {
     }
 
     @GetMapping("/home")
-    public String homePage() {
+    public String homePage(Model model, Authentication authentication, HttpSession session) {
+
+        String username = null;
+        String jwtToken = null;
+
+        // --- FIX: Get user info from EITHER Spring Security or the Session ---
+
+        // Case 1: User logged in via standard form login
+        if (authentication != null && authentication.getPrincipal() instanceof CustomUserDetails) {
+            CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+            username = userDetails.getUsername();
+
+            // Generate a JWT for them to use
+            jwtToken = jwtUtil.generateToken(userDetails);
+
+            // Also, store it in the session for consistency
+            session.setAttribute("jwt_token", jwtToken);
+            session.setAttribute("username", username);
+
+        }
+        // Case 2: User logged in via SSO (controllers put details in session)
+        else if (session.getAttribute("username") != null) {
+            username = (String) session.getAttribute("username");
+            jwtToken = (String) session.getAttribute("jwt_token");
+        }
+
+        // If we still have no user, something is wrong, but security should catch this.
+        // We'll add the attributes (even if null) so Thymeleaf can handle it.
+
+        model.addAttribute("username", username);
+        model.addAttribute("jwtToken", jwtToken);
+
         return "home"; // Thymeleaf template name (e.g., home.html)
     }
+//    public String homePage() {
+//        return "home"; // Thymeleaf template name (e.g., home.html)
+//    }
 
     @GetMapping("/register")
     public String registerPage() {

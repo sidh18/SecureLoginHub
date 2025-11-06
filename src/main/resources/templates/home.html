@@ -119,7 +119,7 @@
 <body>
 <div class="navbar">
     <div class="navbar-brand">
-        <h1>DEMOGRAM</h1>
+        <h1>Secure Login HUB</h1>
         <!-- This span will be filled by JavaScript -->
         <span id="organization-name" class="org-name"></span>
     </div>
@@ -129,20 +129,20 @@
 </div>
 <div class="content">
     <div class="welcome-box">
-        <h2>Hello, <span class="username" th:text="${username}"></span>!</h2>
+        <h2>Hello,<span class="username" th:text="${username}"></span>!</h2>
         <p style="color: #666; font-size: 18px;">Welcome to your dashboard</p>
 
         <!-- Re-enabled the JWT section -->
-        <div class="jwt-section" th:if="${jwtToken}">
-            <h3>Your JWT Token:</h3>
-            <div class="jwt-token" id="jwtToken" th:text="${jwtToken}"></div>
-            <button class="copy-btn" onclick="copyToken()">📋 Copy Token</button>
-            <!-- This span will show "Copied!" instead of an alert -->
-            <span id="copy-message"></span>
-            <p style="font-size: 12px; color: #666; margin-top: 10px;">
-                Use this token to access API endpoints
-            </p>
-        </div>
+<!--        <div class="jwt-section" th:if="${jwtToken}">-->
+<!--            <h3>Your JWT Token:</h3>-->
+<!--            <div class="jwt-token" id="jwtToken" th:text="${jwtToken}"></div>-->
+<!--            <button class="copy-btn" onclick="copyToken()">📋 Copy Token</button>-->
+<!--            &lt;!&ndash; This span will show "Copied!" instead of an alert &ndash;&gt;-->
+<!--            <span id="copy-message"></span>-->
+<!--            <p style="font-size: 12px; color: #666; margin-top: 10px;">-->
+<!--                Use this token to access API endpoints-->
+<!--            </p>-->
+<!--        </div>-->
     </div>
 </div>
 
