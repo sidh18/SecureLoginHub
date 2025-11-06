@@ -6,24 +6,21 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.Optional;
-import jakarta.servlet.DispatcherType; // <-- IMPORT THIS
 
-/**
- * This filter is the "receptionist" for our multi-tenant application.
- * It runs *before* all other filters (including security) to identify
- * which tenant is making the request based on the domain.
- *
- * e.g., "acme.localhost:8190" -> sets TenantContext to Organization ID 5
- * e.g., "superadmin.localhost:8190" -> sets TenantContext to null (Superadmin)
- */
 @Component
+@Order(1) // This filter MUST run first
 public class TenantIdentifierFilter extends OncePerRequestFilter {
+
+    private static final Logger log = LoggerFactory.getLogger(TenantIdentifierFilter.class);
 
     @Autowired
     private OrganizationRepository organizationRepository;
@@ -32,65 +29,57 @@ public class TenantIdentifierFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 
-        // --- FIX: Prevent filter from running on internal ERROR dispatches ---
-        // This stops the filter from running a second time when sendError() is called,
-        // which prevents duplicate queries and the "Cache miss" warning.
-        if (request.getDispatcherType().equals(DispatcherType.ERROR)) {
-            filterChain.doFilter(request, response);
-            return;
+        String host = request.getHeader("Host"); // e.g., "acme.localhost:8190"
+        if (host == null) {
+            host = request.getServerName();
         }
-        // --- END FIX ---
 
-        // Get the full host from the request header
-        // e.g., "acme.localhost:8190"
-        String host = request.getHeader("Host");
+        // Remove port number if it exists
+        if (host.contains(":")) {
+            host = host.split(":")[0];
+        }
+
+        String subdomain = null;
+        if (host.endsWith(".localhost")) {
+            subdomain = host.substring(0, host.indexOf(".localhost"));
+        } else if (host.equals("localhost")) {
+            subdomain = "localhost";
+        } else {
+            // Logic for production domains (e.g., myapp.com) would go here
+            // For now, we assume .localhost or localhost
+            subdomain = "localhost"; // Default to localhost
+        }
 
         try {
-            if (host != null) {
-                // Split the host to get the subdomain part
-                // We split on "." and take the first part.
-                String subdomain = host.split("\\.")[0];
+            // --- THIS IS THE UPDATED LOGIC ---
+            // Treat "localhost" and "superadmin" as the same Superadmin tenant
+            if (subdomain.equals("localhost") || subdomain.equals("superadmin")) {
 
-                // --- FIX: Treat 'localhost' and 'superadmin' as special non-tenant domains ---
-                if ("superadmin".equalsIgnoreCase(subdomain) || "localhost".equalsIgnoreCase(subdomain)) {
-                    // We set the context to null to signify "god mode" or "root".
-                    TenantContext.setCurrentOrganizationId(null);
-                    TenantContext.setCurrentSubdomain(subdomain); // Also store subdomain
-                } else {
-                    // It's a regular tenant domain. Look it up.
-                    Optional<Organization> org = organizationRepository.findBySubdomain(subdomain);
+                TenantContext.setCurrentSubdomain("superadmin");
+                TenantContext.setCurrentOrganizationId(null);
+                log.debug("Setting tenant context for SUPERADMIN (Host: {})", host);
 
-                    if (org.isPresent()) {
-                        // Found it! Set the organization ID for this entire request.
-                        TenantContext.setCurrentOrganizationId(org.get().getId());
-                        TenantContext.setCurrentSubdomain(subdomain); // Also store subdomain
-                    } else {
-                        // This is a domain we don't recognize.
-                        // Send a 404 error and STOP the request chain.
-                        // (Removed logger.warn as it was causing issues)
-                        response.sendError(HttpServletResponse.SC_NOT_FOUND, "Unknown organization: " + subdomain);
-                        // We set the context to null just in case, but we don't call filterChain.
-                        TenantContext.clear();
-                        return; // <-- This is the crucial part, stop the filter chain.
-                    }
-                }
             } else {
-                // No host header. This is unusual but possible.
-                // (Removed logger.warn as it was causing issues)
-                response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Host header is missing.");
-                TenantContext.clear();
-                return; // Stop the chain
+                // This is a tenant (e.g., "acme.localhost")
+                Optional<Organization> org = organizationRepository.findBySubdomain(subdomain);
+                if (org.isPresent()) {
+                    TenantContext.setCurrentSubdomain(subdomain);
+                    TenantContext.setCurrentOrganizationId(org.get().getId());
+                    log.debug("Setting tenant context for Org ID: {} (Host: {})", org.get().getId(), host);
+                } else {
+                    log.warn("No organization found for subdomain: {}", subdomain);
+                    // You could redirect to an error page or the main login
+                    // For now, we'll treat it as a non-tenant request
+                    TenantContext.setCurrentSubdomain("root-error");
+                    TenantContext.setCurrentOrganizationId(null);
+                }
             }
 
-            // Continue the request chain
             filterChain.doFilter(request, response);
 
         } finally {
-            // CRITICAL: After the request is complete (even if it fails),
-            // we MUST clear the ThreadLocal to prevent data leakage
-            // to the next request that uses this thread.
+            // VERY IMPORTANT: Clear the context after the request is finished
             TenantContext.clear();
         }
     }
 }
-
