@@ -26,7 +26,7 @@ WORKDIR /app
 
 # Copy ONLY the built .jar file from the 'builder' stage
 # The jar name 'demo-0.0.1-SNAPSHOT.jar' comes from your pom.xml
-COPY --from=builder /app/target/demo-0.0.1-SNAPSHOT.jar app.jar
+COPY --from=builder /app/target/login-app-0.0.1-SNAPSHOT.jar app.jar
 
 # Expose the port your Spring Boot app runs on (default 8080)
 EXPOSE 8080
