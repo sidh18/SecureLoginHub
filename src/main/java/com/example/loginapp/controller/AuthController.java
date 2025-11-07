@@ -109,41 +109,100 @@ public class AuthController {
     /**
      * Handles new user registration. (Tenant-Aware)
      */
-    @PostMapping("/api/auth/register")
+    @PostMapping("/api/auth/signup")
     @ResponseBody
     public ResponseEntity<?> registerUser(@RequestBody Map<String, String> request) {
 
         // --- TENANT-AWARE ---
         Long organizationId = TenantContext.getCurrentOrganizationId();
 
-        if (organizationId == null) {
-            // Superadmin domain. Registration is disabled.
-            return ResponseEntity.badRequest().body(Map.of("error", "Registration is not allowed on this domain."));
-        }
+        // Get common user details from the request
+        String username = request.get("username");
+        String password = request.get("password");
+        String email = request.get("email");
+        String firstName = request.get("firstName");
+        String lastName = request.get("lastName");
 
-        // We can proceed with registration for the current tenant.
         try {
-            String username = request.get("username");
-            String password = request.get("password");
-            String email = request.get("email");
-            String firstName = request.get("firstName");
-            String lastName = request.get("lastName");
+            if (organizationId == null) {
+                // ===============================================
+                //  PATH 1: SUPERADMIN DOMAIN (Create Product Admin + Org)
+                // ===============================================
 
-            // Create the user using the AdminService, which assigns the org ID
-            user newUser = adminService.createUser(
-                    username,
-                    password,
-                    email,
-                    firstName,
-                    lastName,
-                    "ROLE_USER", // New registered users are always ROLE_USER
-                    organizationId
-            );
+                // 1. Get extra fields required for a new organization
+                String organizationName = request.get("organizationName");
+                String subdomain = request.get("subdomain");
 
-            return ResponseEntity.ok(Map.of("message", "User registered successfully", "userId", newUser.getId()));
+                // 2. Validate input
+                if (organizationName == null || organizationName.isBlank() || subdomain == null || subdomain.isBlank()) {
+                    return ResponseEntity.badRequest().body(Map.of("error", "Organization name and subdomain are required."));
+                }
+                if (userRepository.findByUsernameAndOrganizationIdIsNull(username).isPresent()) {
+                    // This check is for other superadmins, which you might not allow.
+                    // A better check would be for username/email uniqueness globally.
+                    return ResponseEntity.badRequest().body(Map.of("error", "Username already exists."));
+                }
+                if (organizationRepository.findBySubdomain(subdomain).isPresent()) {
+                    return ResponseEntity.badRequest().body(Map.of("error", "This subdomain is already taken."));
+                }
+                if (userRepository.findByEmail(email).isPresent()) {
+                    return ResponseEntity.badRequest().body(Map.of("error", "This email is already in use."));
+                }
 
+
+                // 3. Create the new Organization
+                Organization newOrg = new Organization();
+                newOrg.setName(organizationName);
+                newOrg.setSubdomain(subdomain);
+                Organization savedOrg = organizationRepository.save(newOrg);
+
+                // 4. Create the new "Product Admin" user
+                user adminUser = new user();
+                adminUser.setUsername(username);
+                adminUser.setPassword(passwordEncoder.encode(password));
+                adminUser.setEmail(email);
+                adminUser.setFirstName(firstName);
+                adminUser.setLastName(lastName);
+                adminUser.setRole("ROLE_ADMIN"); // Set role to ADMIN
+                adminUser.setOrganization(savedOrg); // Link to the new organization
+
+                userRepository.save(adminUser);
+
+                return ResponseEntity.ok(Map.of("message", "Organization and admin user created successfully!"));
+
+            } else {
+                // ===============================================
+                //  PATH 2: TENANT DOMAIN (Create End User)
+                // ===============================================
+
+                // 1. Validate input
+                if (userRepository.findByUsernameAndOrganizationId(username, organizationId).isPresent()) {
+                    return ResponseEntity.badRequest().body(Map.of("error", "Username already exists for this organization."));
+                }
+                if (userRepository.findByEmail(email).isPresent()) {
+                    return ResponseEntity.badRequest().body(Map.of("error", "This email is already in use."));
+                }
+
+                // 2. Find the existing organization
+                Organization tenantOrg = organizationRepository.findById(organizationId)
+                        .orElseThrow(() -> new Exception("Invalid organization ID. This should not happen."));
+
+                // 3. Create the new "End User"
+                user newUser = new user();
+                newUser.setUsername(username);
+                newUser.setPassword(passwordEncoder.encode(password));
+                newUser.setEmail(email);
+                newUser.setFirstName(firstName);
+                newUser.setLastName(lastName);
+                newUser.setRole("ROLE_USER"); // Set role to USER
+                newUser.setOrganization(tenantOrg); // Link to the *existing* organization
+
+                user savedUser = userRepository.save(newUser);
+                return ResponseEntity.ok(savedUser); // Return the new user object
+            }
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            // Catch any other errors (e.g., database constraint violations)
+            return ResponseEntity.badRequest().body(Map.of("error", "An error occurred: " + e.getMessage()));
         }
     }
 
@@ -193,8 +252,8 @@ public class AuthController {
 //        return "home"; // Thymeleaf template name (e.g., home.html)
 //    }
 
-    @GetMapping("/register")
+    @GetMapping("/signup")
     public String registerPage() {
-        return "register"; // Thymeleaf template name (e.g., register.html)
+        return "signup"; // Thymeleaf template name (e.g., register.html)
     }
 }

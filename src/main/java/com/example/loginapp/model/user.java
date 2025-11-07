@@ -18,7 +18,7 @@ public class user {
     private String password;
 
     @Column(unique = true) // Email should also be unique
-    private String email;
+    private String email    ;
 
     @Column
     private String firstName;

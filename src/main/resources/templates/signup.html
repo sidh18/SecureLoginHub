@@ -18,7 +18,7 @@
             padding: 40px;
             border-radius: 10px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-            width: 400px; /* Increased width for better message display */
+            width: 400px;
             max-width: 90%;
         }
         h2 {
@@ -35,7 +35,7 @@
             color: #555;
             font-weight: bold;
         }
-        input[type="text"], input[type="password"] {
+        input[type="text"], input[type="password"], input[type="email"] {
             width: 100%;
             padding: 12px;
             border: 1px solid #ddd;
@@ -65,26 +65,57 @@
             color: #667eea;
             text-decoration: none;
         }
-        .error {
-            background: #f8d7da;
-            color: #721c24;
+        .message {
             padding: 10px;
             margin-bottom: 20px;
             border-radius: 5px;
             text-align: center;
+            font-size: 14px;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        /* This group will be hidden by default */
+        .superadmin-fields {
+            display: none;
         }
     </style>
 </head>
 <body>
 <div class="container">
-    <!-- This title will be changed by JavaScript -->
     <h2 id="tenant-name">Sign Up</h2>
 
-    <!-- Thymeleaf error for form submission errors -->
-    <div th:if="${error}" class="error" th:text="${error}"></div>
+    <div id="message-display" class="message" style="display:none;"></div>
 
-    <!-- Give the form an ID so we can hide it -->
-    <form th:action="@{/register}" method="post" id="signup-form">
+    <form id="signup-form" onsubmit="saveUser(event)">
+
+        <div class="superadmin-fields" id="superadmin-fields">
+            <div class="form-group">
+                <label for="organizationName">Organization Name</label>
+                <input type="text" id="organizationName" name="organizationName">
+            </div>
+            <div class="form-group">
+                <label for="subdomain">Subdomain</label>
+                <input type="text" id="subdomain" name="subdomain" placeholder="e.g. 'acme' for acme.localhost">
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="firstName">First Name</label>
+            <input type="text" id="firstName" name="firstName" required>
+        </div>
+        <div class="form-group">
+            <label for="lastName">Last Name</label>
+            <input type="text" id="lastName" name="lastName" required>
+        </div>
+        <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" required>
+        </div>
         <div class="form-group">
             <label for="username">Username</label>
             <input type="text" id="username" name="username" required>
@@ -93,52 +124,101 @@
             <label for="password">Password</label>
             <input type="password" id="password" name="password" required>
         </div>
+
         <button type="submit">Sign Up</button>
     </form>
 
-    <!-- Give the link an ID so we can hide it -->
     <div class="link" id="login-link">
         Already have an account? <a href="/">Login</a>
     </div>
 </div>
 
 <script>
+    // === NEW saveUser() FUNCTION ===
+    // This function handles the form submission
+    async function saveUser(event) {
+        // 1. Prevent the form's default (page reload) submission
+        event.preventDefault();
+
+        const form = document.getElementById('signup-form');
+        const messageDisplay = document.getElementById('message-display');
+        const formData = new FormData(form);
+
+        // 2. Convert form data to a simple JSON object
+        const data = {};
+        formData.forEach((value, key) => {
+            data[key] = value;
+        });
+
+        // 3. Clear previous messages
+        messageDisplay.style.display = 'none';
+        messageDisplay.textContent = '';
+        messageDisplay.className = 'message';
+
+        try {
+            // 4. Send the JSON data to the /api/auth/signup endpoint
+            const response = await fetch('/api/auth/signup', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                // 5. If response is not 2xx, show the error from the backend
+                throw new Error(result.error || 'An unknown error occurred.');
+            }
+
+            // 6. Handle Success
+            messageDisplay.textContent = result.message || 'User registered successfully!';
+            messageDisplay.classList.add('success');
+            messageDisplay.style.display = 'block';
+            form.reset(); // Clear the form
+
+            // Optionally redirect to login after a delay
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 3000);
+
+        } catch (error) {
+            // 7. Handle Fetch/Network/Backend Error
+            messageDisplay.textContent = error.message;
+            messageDisplay.classList.add('error');
+            messageDisplay.style.display = 'block';
+        }
+    }
+
+
+    // === MODIFIED DOMContentLoaded LISTENER ===
     window.addEventListener('DOMContentLoaded', () => {
-        // --- 1. Fetch Tenant Info ---
+        // 1. Fetch Tenant Info (your existing logic)
         fetch('/api/tenant/info')
             .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
+                if (!response.ok) throw new Error('Network response was not ok');
                 return response.json();
             })
             .then(data => {
                 const tenantNameEl = document.getElementById('tenant-name');
-                const containerEl = document.querySelector('.container');
-                const formEl = document.getElementById('signup-form');
-                const loginLinkEl = document.getElementById('login-link');
 
                 if (data.name) {
                     // Check if this is the superadmin or root domain
-                    if (data.name === "Superadmin Login" || data.name === "Login") {
+                    if (data.name === "Superadmin Login") {
 
-                        // 1. Change title and hide form
-                        tenantNameEl.innerHTML = "Registration Disabled";
-                        if (formEl) formEl.style.display = 'none';
-                        if (loginLinkEl) loginLinkEl.style.display = 'none';
+                        // THIS IS THE NEW LOGIC
+                        // 1. Change title
+                        tenantNameEl.innerHTML = "Create New Product Admin";
 
-                        // 2. Add an error message
-                        const errorDiv = document.createElement('div');
-                        errorDiv.className = 'error'; // Use existing style
-                        errorDiv.style.marginTop = '0px';
-                        errorDiv.innerHTML = 'New accounts must be created from a specific organization subdomain (e.g., acme.localhost/signup).';
-                        containerEl.appendChild(errorDiv);
-
-                        // 3. Add a link back to the login page
-                        const backLink = document.createElement('div');
-                        backLink.className = 'link';
-                        backLink.innerHTML = '<a href="/">Go to Login</a>';
-                        containerEl.appendChild(backLink);
+                        // 2. Show the hidden fields for organization
+                        const superadminFields = document.getElementById('superadmin-fields');
+                        if (superadminFields) {
+                            superadminFields.style.display = 'block';
+                            // Make them required
+                            document.getElementById('organizationName').required = true;
+                            document.getElementById('subdomain').required = true;
+                        }
 
                     } else {
                         // This is a valid tenant (e.g., "Acme Inc.")

@@ -68,7 +68,7 @@ public class SecurityConfig {
                         // --- FIX: ---
                         // Allow public access to the new tenant-aware API login/register endpoints
                         .requestMatchers("/api/auth/login").permitAll()
-                        .requestMatchers("/api/auth/register").permitAll()
+                        .requestMatchers("/api/auth/signup").permitAll()
                         // --- END FIX ---
 
                         // --- NEW ROLE-BASED RULES ---
