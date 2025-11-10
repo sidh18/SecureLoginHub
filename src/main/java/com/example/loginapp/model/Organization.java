@@ -5,6 +5,8 @@ import java.time.Instant;
 import java.util.Set;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
+import java.util.Set; // Make sure this is imported
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 
 
 @Entity
@@ -33,6 +35,10 @@ public class Organization {
     @OneToMany(mappedBy = "organization", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonIgnore // Avoid infinite loops when serializing
     private Set<SsoConfig> ssoConfigs;
+
+    @OneToMany(mappedBy = "organization", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonManagedReference("organization-bugs") // Use the unique name
+    private Set<BugReport> bugReports;
 
     // --- Lifecycle Callbacks ---
 

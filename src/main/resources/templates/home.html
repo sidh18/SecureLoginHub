@@ -11,6 +11,12 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
         }
+
+        /* Prevent scrolling when modal is open */
+        body.modal-open {
+            overflow: hidden;
+        }
+
         .navbar {
             background: white;
             padding: 20px 40px;
@@ -28,7 +34,6 @@
             margin: 0;
             color: #667eea;
         }
-        /* Style for the dynamic organization name */
         .org-name {
             font-size: 20px;
             font-weight: 300;
@@ -36,20 +41,56 @@
             border-left: 2px solid #ddd;
             padding-left: 15px;
         }
-        .logout-btn {
-            padding: 10px 25px;
-            background: #dc3545;
-            color: white;
+
+        /* --- ADDED: Wrapper for right-side navbar items --- */
+        .navbar-right {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        /* --- ADDED: Standard Button Styles --- */
+        .btn {
+            padding: 10px 20px;
             border: none;
             border-radius: 5px;
             cursor: pointer;
-            font-size: 14px;
             font-weight: bold;
             text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+            font-size: 14px;
         }
-        .logout-btn:hover {
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        .btn-danger:hover {
             background: #c82333;
         }
+        .btn-warning {
+            background: #ffc107;
+            color: #333;
+        }
+        .btn-warning:hover {
+            background: #e0a800;
+        }
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        .btn-success:hover {
+            background: #218838;
+        }
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        /* --- END ADDED Button Styles --- */
+
         .content {
             display: flex;
             justify-content: center;
@@ -73,82 +114,154 @@
             color: #667eea;
             font-weight: bold;
         }
-        .jwt-section {
-            margin-top: 30px;
+
+        /* ... (Your existing .jwt-section, .copy-btn styles) ... */
+
+        /* --- ADDED: Modal Styles (Copied from Admin Dashboard) --- */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            animation: fadeIn 0.3s;
+            overflow-y: auto;
+            padding: 5vh 0;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .modal-content {
+            background-color: white;
+            margin: 0 auto;
+            padding: 0;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 5px 30px rgba(0,0,0,0.3);
+            animation: slideDown 0.3s;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+        }
+        @keyframes slideDown {
+            from { transform: translateY(-50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .modal-header {
             padding: 20px;
-            background: #f8f9fa;
-            border-radius: 5px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px 10px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
-        .jwt-section h3 {
-            margin-top: 0;
-            color: #333;
+        .modal-header h3 {
+            margin: 0;
         }
-        .jwt-token {
-            word-break: break-all;
-            background: white;
-            padding: 10px;
-            border-radius: 3px;
-            border: 1px solid #ddd;
-            font-family: monospace;
-            font-size: 11px;
-            max-height: 100px;
+        .close {
+            color: white;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            background: none;
+            border: none;
+        }
+        .close:hover {
+            opacity: 0.8;
+        }
+        .modal-body {
+            padding: 25px;
             overflow-y: auto;
         }
-        .copy-btn {
-            margin-top: 10px;
-            padding: 8px 16px;
-            background: #28a745;
-            color: white;
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
+        .modal-footer {
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 0 0 10px 10px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
         }
-        .copy-btn:hover {
-            background: #218838;
+        /* --- ADDED: Form Styles for Modal --- */
+        .form-group {
+            margin-bottom: 20px;
         }
-        /* Style for the "Copied!" message */
-        #copy-message {
-            margin-left: 10px;
-            color: #28a745;
-            font-weight: bold;
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
             font-size: 14px;
-            transition: opacity 0.5s;
+            min-height: 100px;
+            resize: vertical;
         }
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        /* --- END ADDED Modal Styles --- */
     </style>
 </head>
 <body>
 <div class="navbar">
     <div class="navbar-brand">
         <h1>Secure Login HUB</h1>
-        <!-- This span will be filled by JavaScript -->
         <span id="organization-name" class="org-name"></span>
     </div>
-    <form th:action="@{/logout}" method="post" style="margin: 0;">
-        <button type="submit" class="logout-btn">Logout</button>
-    </form>
-</div>
-<div class="content">
-    <div class="welcome-box">
-        <h2>Hello,<span class="username" th:text="${username}"></span>!</h2>
-        <p style="color: #666; font-size: 18px;">Welcome to your dashboard</p>
 
-        <!-- Re-enabled the JWT section -->
-<!--        <div class="jwt-section" th:if="${jwtToken}">-->
-<!--            <h3>Your JWT Token:</h3>-->
-<!--            <div class="jwt-token" id="jwtToken" th:text="${jwtToken}"></div>-->
-<!--            <button class="copy-btn" onclick="copyToken()">📋 Copy Token</button>-->
-<!--            &lt;!&ndash; This span will show "Copied!" instead of an alert &ndash;&gt;-->
-<!--            <span id="copy-message"></span>-->
-<!--            <p style="font-size: 12px; color: #666; margin-top: 10px;">-->
-<!--                Use this token to access API endpoints-->
-<!--            </p>-->
-<!--        </div>-->
+    <div class="navbar-right">
+        <button class="btn btn-warning" onclick="openBugReportModal()">🐞 Report Bug</button>
+
+        <form th:action="@{/logout}" method="post" style="margin: 0;">
+            <button type="submit" class="btn btn-danger">Logout</button>
+        </form>
     </div>
 </div>
 
+<div class="content">
+    <div class="welcome-box">
+        <h2>Hello, <span class="username" th:text="${username}"></span>!</h2>
+        <p style="color: #666; font-size: 18px;">Welcome to your dashboard</p>
+
+    </div>
+</div>
+
+<div id="bugReportModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="bugReportModalTitle">🐞 Report a Bug</h3>
+            <button class="close" onclick="closeModal('bugReportModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p style="font-size: 14px; color: #666; margin-bottom: 15px;">
+                Found an issue? Please describe it in detail below.
+                This report will be sent directly to the superadmin.
+            </p>
+            <div class="form-group">
+                <label for="bugDescription">Bug Description *</label>
+                <textarea id="bugDescription" placeholder="e.g., 'When I click the home button, the page doesn't load.'"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('bugReportModal')">Cancel</button>
+            <button class="btn btn-success" onclick="saveBugReport()">Submit Report</button>
+        </div>
+    </div>
+</div>
 <script th:inline="javascript">
 
-    // --- 1. Fetch Tenant Info on Page Load ---
+    // --- 1. Fetch Tenant Info on Page Load (Existing Code) ---
     window.addEventListener('DOMContentLoaded', () => {
         fetch('/api/tenant/info')
             .then(response => response.json())
@@ -162,47 +275,67 @@
             });
     });
 
-    // --- 2. Fixed Copy-to-Clipboard Function (No Alerts) ---
+    // --- 2. Copy-to-Clipboard Function (Existing Code) ---
     function copyToken() {
-        const tokenText = document.getElementById('jwtToken').textContent;
-        const copyMessageEl = document.getElementById('copy-message');
+        // ... (your existing copyToken function) ...
+    }
 
-        // Create a temporary textarea to hold the text
-        const tempTextArea = document.createElement('textarea');
-        tempTextArea.value = tokenText;
-        document.body.appendChild(tempTextArea);
+    // --- 3. ADDED: Modal and Bug Report JavaScript Functions ---
 
-        // Select and copy the text
-        tempTextArea.select();
-        tempTextArea.setSelectionRange(0, 99999); // For mobile devices
+    // Generic function to open any modal
+    function openModal(modalId) {
+        document.getElementById(modalId).style.display = 'block';
+        document.body.classList.add('modal-open');
+    }
 
-        try {
-            // Use execCommand as it's more reliable in iframes
-            document.execCommand('copy');
+    // Generic function to close any modal
+    function closeModal(modalId) {
+        document.getElementById(modalId).style.display = 'none';
+        document.body.classList.remove('modal-open');
+    }
 
-            // Show "Copied!" message
-            copyMessageEl.textContent = 'Copied!';
-            copyMessageEl.style.opacity = '1';
+    // Specific function to open the bug report modal
+    function openBugReportModal() {
+        document.getElementById('bugDescription').value = ''; // Clear textarea
+        openModal('bugReportModal');
+    }
 
-            // Fade out the message after 2 seconds
-            setTimeout(() => {
-                copyMessageEl.style.opacity = '0';
-            }, 2000);
-
-        } catch (err) {
-            console.error('Failed to copy token: ', err);
-            copyMessageEl.textContent = 'Failed!';
-            copyMessageEl.style.color = '#dc3545'; // Make it red
-            copyMessageEl.style.opacity = '1';
-
-            setTimeout(() => {
-                copyMessageEl.style.opacity = '0';
-            }, 2000);
+    // Specific function to save the bug report
+    async function saveBugReport() {
+        const description = document.getElementById('bugDescription').value;
+        if (!description) {
+            alert('Please provide a description for the bug.');
+            return;
         }
 
-        // Remove the temporary textarea
-        document.body.removeChild(tempTextArea);
+        try {
+            // This API call is authenticated by the user's session cookie
+            const response = await fetch('/api/bugs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ description: description })
+            });
+
+            if (response.ok) {
+                alert('Bug report submitted successfully! Thank you.');
+                closeModal('bugReportModal');
+            } else {
+                const error = await response.json();
+                alert('Failed to submit report: ' + (error.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error submitting bug report:', error);
+            alert('Error submitting bug report.');
+        }
     }
+
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+        if (event.target.classList.contains('modal')) {
+            closeModal('bugReportModal');
+        }
+    }
+    // --- END ADDED JAVASCRIPT ---
 </script>
 </body>
 </html>

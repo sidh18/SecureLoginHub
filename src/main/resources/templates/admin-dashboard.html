@@ -477,6 +477,7 @@
     </div>
     <div class="navbar-right">
         <span>Welcome, <strong th:text="${adminUsername}"></strong></span>
+        <button class="btn btn-warning" onclick="openBugReportModal()">🐞 Report Bug</button>
         <a href="/home" class="btn btn-primary">👤 User View</a>
         <form th:action="@{/logout}" method="post" style="margin: 0;">
             <button type="submit" class="btn btn-danger">Logout</button>
@@ -774,6 +775,29 @@
         <div class="modal-footer">
             <button class="btn btn-secondary" onclick="closeModal('userModal')">Cancel</button>
             <button class="btn btn-success" onclick="saveUser()">Save User</button>
+        </div>
+    </div>
+</div>
+
+<div id="bugReportModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="bugReportModalTitle">🐞 Report a Bug</h3>
+            <button class="close" onclick="closeModal('bugReportModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p style="font-size: 14px; color: #666; margin-bottom: 15px;">
+                Found an issue? Please describe it in detail below.
+                This report will be sent directly to the superadmin.
+            </p>
+            <div class="form-group">
+                <label for="bugDescription">Bug Description *</label>
+                <textarea id="bugDescription" placeholder="e.g., 'When I try to delete a user, I get a 500 error.'"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('bugReportModal')">Cancel</button>
+            <button class="btn btn-success" onclick="saveBugReport()">Submit Report</button>
         </div>
     </div>
 </div>
@@ -1414,6 +1438,40 @@
         } catch (error) {
             console.error('Error parsing metadata:', error);
             alert('Error parsing IDP metadata');
+        }
+    }
+
+    function openBugReportModal() {
+        document.getElementById('bugDescription').value = ''; // Clear textarea
+        openModal('bugReportModal');
+    }
+
+    async function saveBugReport() {
+        const description = document.getElementById('bugDescription').value;
+        if (!description) {
+            alert('Please provide a description for the bug.');
+            return;
+        }
+
+        try {
+            // Note: No JWT is needed here.
+            // This request is authenticated by the session cookie.
+            const response = await fetch('/api/bugs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ description: description })
+            });
+
+            if (response.ok) {
+                alert('Bug report submitted successfully! Thank you.');
+                closeModal('bugReportModal');
+            } else {
+                const error = await response.json();
+                alert('Failed to submit report: ' + (error.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error submitting bug report:', error);
+            alert('Error submitting bug report.');
         }
     }
 

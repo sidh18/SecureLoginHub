@@ -206,6 +206,54 @@ public class AuthController {
         }
     }
 
+    @PostMapping("/api/auth/check-username")
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> checkUsernameAvailability(@RequestBody Map<String, String> request) {
+        String username = request.get("username");
+        if (username == null || username.length() < 3) {
+            return ResponseEntity.badRequest().body(Map.of("available", false, "message", "Username must be at least 3 characters."));
+        }
+
+        // --- TENANT-AWARE ---
+        Long organizationId = TenantContext.getCurrentOrganizationId();
+        Optional<user> userOptional;
+
+        if (organizationId == null) {
+            // Superadmin domain: Check for other superadmins
+            userOptional = userRepository.findByUsernameAndOrganizationIdIsNull(username);
+        } else {
+            // Tenant domain: Check only within this tenant
+            userOptional = userRepository.findByUsernameAndOrganizationId(username, organizationId);
+        }
+
+        if (userOptional.isPresent()) {
+            return ResponseEntity.ok(Map.of("available", false, "message", "Username is already taken."));
+        } else {
+            return ResponseEntity.ok(Map.of("available", true, "message", "Username is available."));
+        }
+    }
+
+    /**
+     * Handles real-time check for subdomain availability.
+     */
+    @PostMapping("/api/auth/check-subdomain")
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> checkSubdomainAvailability(@RequestBody Map<String, String> request) {
+        String subdomain = request.get("subdomain");
+        if (subdomain == null || subdomain.length() < 3) {
+            return ResponseEntity.badRequest().body(Map.of("available", false, "message", "Subdomain must be at least 3 characters."));
+        }
+
+        // Subdomains are globally unique, so this check is simple.
+        Optional<Organization> orgOptional = organizationRepository.findBySubdomain(subdomain);
+
+        if (orgOptional.isPresent()) {
+            return ResponseEntity.ok(Map.of("available", false, "message", "Subdomain is already taken."));
+        } else {
+            return ResponseEntity.ok(Map.of("available", true, "message", "Subdomain is available."));
+        }
+    }
+
     // --- Page Views ---
 
     @GetMapping("/")

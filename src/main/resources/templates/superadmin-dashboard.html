@@ -405,6 +405,10 @@
             <h3 id="totalSsoConfigs">0</h3>
             <p>Total SSO Configs</p>
         </div>
+        <div class="stat-card">
+            <h3 id="totalOpenBugs" style="color: #dc3545;">0</h3>
+            <p>Open Bug Reports</p>
+        </div>
     </div>
 
     <!-- Organization Management -->
@@ -454,6 +458,29 @@
             </thead>
             <tbody id="usersTableBody">
             <!-- Dynamic content -->
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2>🐞 Bug Reports</h2>
+            <button class="btn btn-primary" onclick="loadBugReports()">Refresh List</button>
+        </div>
+
+        <table id="bugReportsTable">
+            <thead>
+            <tr>
+                <th>ID</th>
+                <th>Status</th>
+                <th>Organization</th>
+                <th>Reported By</th>
+                <th>Description</th>
+                <th>Reported At</th>
+                <th>Actions</th>
+            </tr>
+            </thead>
+            <tbody id="bugReportsTableBody">
             </tbody>
         </table>
     </div>
@@ -646,6 +673,7 @@
         loadOrganizations();
         loadGlobalUsers();
         loadGlobalSsoConfigs();
+        loadBugReports();
 
         // Add listener to subdomain input for preview
         const subdomainInput = document.getElementById('orgSubdomain');
@@ -861,6 +889,7 @@
         if (event.target.classList.contains('modal')) {
             closeModal('organizationModal');
             closeModal('tenantAdminModal');
+            closeModal('bugReportModal');
             closeModal('userModal');
         }
     }
@@ -1117,6 +1146,77 @@
             alert('Error deleting user');
         }
     }
+
+    async function loadBugReports() {
+        try {
+            const response = await fetch(`${API_BASE}/bugs`, { headers: API_HEADERS });
+            if (!response.ok) throw new Error('Failed to fetch bug reports');
+            const bugs = await response.json();
+
+            const tbody = document.getElementById('bugReportsTableBody');
+            tbody.innerHTML = '';
+
+            // Update stats
+            const openBugs = bugs.filter(b => b.status === 'OPEN').length;
+            document.getElementById('totalOpenBugs').textContent = openBugs;
+
+            if (bugs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><div class="empty-state-icon">🎉</div>No bug reports found!</td></tr>';
+                return;
+            }
+
+            bugs.forEach(bug => {
+                const tr = document.createElement('tr');
+                let statusBadge = 'badge-success'; // CLOSED
+                if (bug.status === 'OPEN') statusBadge = 'badge-danger';
+                if (bug.status === 'IN_PROGRESS') statusBadge = 'badge-warning';
+
+                tr.innerHTML = `
+                    <td>${bug.id}</td>
+                    <td><span class="badge ${statusBadge}">${bug.status}</span></td>
+                    <td><strong>${bug.organizationName || 'N/A'}</strong></td>
+                    <td>${bug.reportedByUsername || 'N/A'}</td>
+                    <td style="white-space: pre-wrap; word-break: break-word;">${bug.description}</td>
+                    <td>${new Date(bug.createdAt).toLocaleString()}</td>
+                    <td>
+                        <select onchange="updateBugStatus(${bug.id}, this.value)">
+                            <option value="OPEN" ${bug.status === 'OPEN' ? 'selected' : ''}>Open</option>
+                            <option value="IN_PROGRESS" ${bug.status === 'IN_PROGRESS' ? 'selected' : ''}>In Progress</option>
+                            <option value="CLOSED" ${bug.status === 'CLOSED' ? 'selected' : ''}>Closed</option>
+                        </select>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } catch (error) {
+            console.error('Error loading bug reports:', error);
+            const tbody = document.getElementById('bugReportsTableBody');
+            tbody.innerHTML = '<tr><td colspan="7" class="empty-state" style="color: #721c24;">Failed to load bug reports.</td></tr>';
+        }
+    }
+
+    async function updateBugStatus(bugId, newStatus) {
+        try {
+            const response = await fetch(`${API_BASE}/bugs/${bugId}/status`, {
+                method: 'PUT',
+                headers: API_HEADERS,
+                body: JSON.stringify({ status: newStatus })
+            });
+
+            if (response.ok) {
+                // Refresh the list to show the change
+                loadBugReports();
+            } else {
+                const error = await response.json();
+                alert('Failed to update status: ' + (error.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error updating bug status:', error);
+            alert('Error updating bug status.');
+        }
+    }
+
+
 
 </script>
 </body>

@@ -1,6 +1,8 @@
 package com.example.loginapp.model;
 
 import com.fasterxml.jackson.annotation.JsonBackReference; // <-- IMPORT THIS
+import java.util.Set; // <-- IMPORT THIS
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import java.time.Instant;
 
@@ -48,6 +50,10 @@ public class user {
     @JoinColumn(name = "organization_id", nullable = true)
     @JsonBackReference // <-- ADD THIS ANNOTATION
     private Organization organization;
+
+    @OneToMany(mappedBy = "reportedBy", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonManagedReference("user-bugs") // Use the unique name
+    private Set<BugReport> bugReports;
 
     // --- Lifecycle Callbacks ---
 

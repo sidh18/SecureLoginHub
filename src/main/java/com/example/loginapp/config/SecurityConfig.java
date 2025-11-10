@@ -16,6 +16,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.http.HttpMethod;
 
 @Configuration
 @EnableWebSecurity
@@ -63,7 +64,12 @@ public class SecurityConfig {
                         // Public APIs for dynamic login page
                         .requestMatchers("/api/test").permitAll()
                         .requestMatchers("/api/tenant/info").permitAll()
-                        .requestMatchers("/api/sso-configs/tenant").permitAll()
+                        .requestMatchers("/api/sso-configs/tenant","/api/auth/check-username",
+                                "/api/auth/check-subdomain" ).permitAll()
+
+                        .requestMatchers(HttpMethod.POST, "/api/bugs").hasAnyRole("ADMIN", "USER")
+                        .requestMatchers(HttpMethod.GET, "/api/bugs").hasRole("SUPER_ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/bugs/*", "/api/bugs/**").hasRole("SUPER_ADMIN")
 
                         // --- FIX: ---
                         // Allow public access to the new tenant-aware API login/register endpoints

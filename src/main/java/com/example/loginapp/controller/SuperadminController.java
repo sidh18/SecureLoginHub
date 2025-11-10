@@ -13,6 +13,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
+import com.example.loginapp.model.BugReport;
+import com.example.loginapp.repository.BugReportRepository;
+import java.util.Optional;
 
 import java.util.List;
 import java.util.Map;
@@ -33,6 +36,9 @@ public class SuperadminController {
 
     @Autowired
     private JwtUtil jwtUtil; // <-- INJECT JWTUTIL
+
+    @Autowired
+    private BugReportRepository bugReportRepository;
 
     /**
      * Helper method to get the current authenticated user's details.
@@ -236,6 +242,34 @@ public class SuperadminController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
+    }
+
+    @GetMapping("/api/bugs")
+    @ResponseBody
+    public ResponseEntity<List<BugReport>> getAllBugReports() {
+        // Use the custom query to avoid LazyInitializationException
+        List<BugReport> bugs = bugReportRepository.findAllWithDetails();
+        return ResponseEntity.ok(bugs);
+    }
+
+    @PutMapping("/api/bugs/{id}/status")
+    @ResponseBody
+    public ResponseEntity<?> updateBugStatus(@PathVariable Long id, @RequestBody Map<String, String> request) {
+        String status = request.get("status");
+        if (status == null || status.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Status cannot be empty."));
+        }
+
+        Optional<BugReport> bugOptional = bugReportRepository.findById(id);
+        if (bugOptional.isEmpty()) {
+            return ResponseEntity.status(404).body(Map.of("error", "Bug report not found."));
+        }
+
+        BugReport bug = bugOptional.get();
+        bug.setStatus(status);
+        BugReport updatedBug = bugReportRepository.save(bug);
+
+        return ResponseEntity.ok(updatedBug);
     }
 
     /**

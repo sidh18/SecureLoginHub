@@ -3,14 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <title>Sign Up</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
+        /* UPDATED: Added box-sizing for better layout control */
+        html, body {
+            box-sizing: border-box;
+        }
+
         body {
             font-family: Arial, sans-serif;
             display: flex;
             justify-content: center;
-            align-items: center;
-            height: 100vh;
+            /* UPDATED: Removed align-items: center */
+            /* UPDATED: Changed height to min-height to allow scrolling */
+            min-height: 100vh;
             margin: 0;
+            /* UPDATED: Added padding to give space at the top and bottom */
+            padding: 40px 20px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
         .container {
@@ -20,6 +29,7 @@
             box-shadow: 0 10px 25px rgba(0,0,0,0.2);
             width: 400px;
             max-width: 90%;
+            /* UPDATED: Let height be automatic */
         }
         h2 {
             text-align: center;
@@ -27,7 +37,9 @@
             margin-bottom: 30px;
         }
         .form-group {
-            margin-bottom: 20px;
+            /* UPDATED: Simplified margin */
+            margin-bottom: 15px;
+            /* UPDATED: Removed position: relative */
         }
         label {
             display: block;
@@ -40,7 +52,7 @@
             padding: 12px;
             border: 1px solid #ddd;
             border-radius: 5px;
-            box-sizing: border-box;
+            box-sizing: border-box; /* Ensures padding doesn't break width */
             font-size: 14px;
         }
         button {
@@ -53,9 +65,17 @@
             cursor: pointer;
             font-size: 16px;
             font-weight: bold;
+            margin-top: 10px;
+            /* UPDATED: Style for disabled button */
+            transition: background-color 0.3s ease;
         }
         button:hover {
             background: #5568d3;
+        }
+        /* UPDATED: Disabled button style */
+        button:disabled {
+            background: #aaa;
+            cursor: not-allowed;
         }
         .link {
             text-align: center;
@@ -80,10 +100,25 @@
             background: #d4edda;
             color: #155724;
         }
-        /* This group will be hidden by default */
         .superadmin-fields {
             display: none;
         }
+
+        /* --- UPDATED VALIDATION CSS --- */
+        .validation-message {
+            font-size: 12px;
+            /* UPDATED: Let it flow naturally */
+            margin-top: 4px;
+            display: block;
+        }
+        .validation-success {
+            color: #155724; /* Green */
+        }
+        .validation-error {
+            color: #721c24; /* Red */
+        }
+        /* --- END UPDATED CSS --- */
+
     </style>
 </head>
 <body>
@@ -92,7 +127,7 @@
 
     <div id="message-display" class="message" style="display:none;"></div>
 
-    <form id="signup-form" onsubmit="saveUser(event)">
+    <form id="signup-form" onsubmit="saveUser(event)" oninput="validateForm()">
 
         <div class="superadmin-fields" id="superadmin-fields">
             <div class="form-group">
@@ -102,6 +137,7 @@
             <div class="form-group">
                 <label for="subdomain">Subdomain</label>
                 <input type="text" id="subdomain" name="subdomain" placeholder="e.g. 'acme' for acme.localhost">
+                <div id="subdomain-status" class="validation-message"></div>
             </div>
         </div>
         <div class="form-group">
@@ -119,13 +155,14 @@
         <div class="form-group">
             <label for="username">Username</label>
             <input type="text" id="username" name="username" required>
+            <div id="username-status" class="validation-message"></div>
         </div>
         <div class="form-group">
             <label for="password">Password</label>
             <input type="password" id="password" name="password" required>
         </div>
 
-        <button type="submit">Sign Up</button>
+        <button type="submit" disabled>Sign Up</button>
     </form>
 
     <div class="link" id="login-link">
@@ -134,67 +171,110 @@
 </div>
 
 <script>
-    // === NEW saveUser() FUNCTION ===
-    // This function handles the form submission
-    async function saveUser(event) {
-        // 1. Prevent the form's default (page reload) submission
-        event.preventDefault();
+    // === DEBOUNCE UTILITY ===
+    function debounce(func, delay) {
+        let timeout;
+        return function(...args) {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(this, args), delay);
+        };
+    }
 
+    // === VALIDATION FUNCTIONS ===
+    async function checkUsername() {
+        const input = document.getElementById('username');
+        const statusEl = document.getElementById('username-status');
+        const username = input.value;
+        if (username.length < 3) {
+            statusEl.textContent = ''; return;
+        }
+        try {
+            const response = await fetch('/api/auth/check-username', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ username: username })
+            });
+            const result = await response.json();
+            statusEl.textContent = result.message;
+            statusEl.className = result.available ? 'validation-message validation-success' : 'validation-message validation-error';
+        } catch (error) {
+            statusEl.textContent = 'Could not validate username.';
+            statusEl.className = 'validation-message validation-error';
+        }
+    }
+
+    async function checkSubdomain() {
+        const input = document.getElementById('subdomain');
+        const statusEl = document.getElementById('subdomain-status');
+        const subdomain = input.value;
+        if (subdomain.length < 3) {
+            statusEl.textContent = ''; return;
+        }
+        try {
+            const response = await fetch('/api/auth/check-subdomain', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ subdomain: subdomain })
+            });
+            const result = await response.json();
+            statusEl.textContent = result.message;
+            statusEl.className = result.available ? 'validation-message validation-success' : 'validation-message validation-error';
+        } catch (error) {
+            statusEl.textContent = 'Could not validate subdomain.';
+            statusEl.className = 'validation-message validation-error';
+        }
+    }
+
+    // === FORM SUBMISSION ===
+    async function saveUser(event) {
+        event.preventDefault();
         const form = document.getElementById('signup-form');
         const messageDisplay = document.getElementById('message-display');
         const formData = new FormData(form);
-
-        // 2. Convert form data to a simple JSON object
         const data = {};
-        formData.forEach((value, key) => {
-            data[key] = value;
-        });
+        formData.forEach((value, key) => { data[key] = value; });
 
-        // 3. Clear previous messages
         messageDisplay.style.display = 'none';
         messageDisplay.textContent = '';
         messageDisplay.className = 'message';
 
         try {
-            // 4. Send the JSON data to the /api/auth/signup endpoint
             const response = await fetch('/api/auth/signup', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(data)
             });
-
             const result = await response.json();
-
             if (!response.ok) {
-                // 5. If response is not 2xx, show the error from the backend
                 throw new Error(result.error || 'An unknown error occurred.');
             }
-
-            // 6. Handle Success
             messageDisplay.textContent = result.message || 'User registered successfully!';
             messageDisplay.classList.add('success');
             messageDisplay.style.display = 'block';
-            form.reset(); // Clear the form
-
-            // Optionally redirect to login after a delay
-            setTimeout(() => {
-                window.location.href = '/';
-            }, 3000);
-
+            form.reset();
+            validateForm(); // Re-disable button after reset
+            setTimeout(() => { window.location.href = '/'; }, 3000);
         } catch (error) {
-            // 7. Handle Fetch/Network/Backend Error
             messageDisplay.textContent = error.message;
             messageDisplay.classList.add('error');
             messageDisplay.style.display = 'block';
         }
     }
 
+    // --- UPDATED: NEW FUNCTION to enable/disable button ---
+    function validateForm() {
+        const form = document.getElementById('signup-form');
+        const button = form.querySelector('button[type="submit"]');
+        // checkValidity() is a built-in browser API
+        // that checks all "required" fields
+        button.disabled = !form.checkValidity();
+    }
+    // --- END NEW FUNCTION ---
 
-    // === MODIFIED DOMContentLoaded LISTENER ===
+
+    // === DOMContentLoaded LISTENER ===
     window.addEventListener('DOMContentLoaded', () => {
-        // 1. Fetch Tenant Info (your existing logic)
+        // 1. Fetch Tenant Info
         fetch('/api/tenant/info')
             .then(response => {
                 if (!response.ok) throw new Error('Network response was not ok');
@@ -202,35 +282,35 @@
             })
             .then(data => {
                 const tenantNameEl = document.getElementById('tenant-name');
-
                 if (data.name) {
-                    // Check if this is the superadmin or root domain
                     if (data.name === "Superadmin Login") {
-
-                        // THIS IS THE NEW LOGIC
-                        // 1. Change title
                         tenantNameEl.innerHTML = "Create New Product Admin";
-
-                        // 2. Show the hidden fields for organization
                         const superadminFields = document.getElementById('superadmin-fields');
                         if (superadminFields) {
                             superadminFields.style.display = 'block';
-                            // Make them required
+                            // UPDATED: Set 'required' on these fields
                             document.getElementById('organizationName').required = true;
                             document.getElementById('subdomain').required = true;
                         }
-
                     } else {
-                        // This is a valid tenant (e.g., "Acme Inc.")
-                        // Update the title to be "Sign Up for [Tenant Name]"
                         tenantNameEl.innerHTML = `Sign Up for ${data.name}`;
                     }
                 }
+                // UPDATED: Call validateForm after setting fields,
+                // to ensure button state is correct on load
+                validateForm();
             })
             .catch(error => {
                 console.error('Error fetching tenant info:', error);
-                // If it fails, the default "Sign Up" title will remain
+                validateForm(); // Also call on error
             });
+
+        // 2. Attach Event Listeners
+        document.getElementById('username').addEventListener('keyup', debounce(checkUsername, 300));
+        document.getElementById('subdomain').addEventListener('keyup', debounce(checkSubdomain, 300));
+
+        // 3. UPDATED: Call validateForm on load
+        validateForm();
     });
 </script>
 
